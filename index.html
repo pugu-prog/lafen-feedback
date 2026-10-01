@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="lb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lafen Trainingsfeedback</title>
+<style>
+  :root {
+    --input: #cfe0f3;
+    --input-line: #8fb0d6;
+    --calc: #e3e1e1;
+    --note: #f765cd;
+    --head: #63be7b;
+    --line: #222;
+    --text: #1a1a1a;
+    --muted: #666;
+    --bg: #f4f5f7;
+    --paper: #fff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd;
+  }
+  .toolbar h1 { font-size: 16px; margin: 0 auto 0 0; }
+  button {
+    font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #bbb; background: #fafafa;
+  }
+  button:hover { background: #eee; }
+  button.primary { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
+  button.primary:hover { background: #255bb3; }
+  .sheet {
+    max-width: 980px; margin: 16px auto; padding: 20px 24px 28px;
+    background: var(--paper); box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  }
+  .note {
+    background: var(--note); padding: 3px 8px; margin: 0 0 10px; font-size: 13px;
+  }
+  .note .k { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin: 0 3px 0 8px; border: 1px solid #555; }
+
+  /* Header block */
+  .meta {
+    display: grid; grid-template-columns: 130px 1fr 110px 90px 100px 90px; gap: 3px 6px;
+    align-items: center; margin-bottom: 14px;
+  }
+  .meta label { text-align: right; color: #333; }
+  .meta .span2 { grid-column: span 2; }
+  .meta .span3 { grid-column: span 3; }
+  .meta .span5 { grid-column: span 5; }
+  input, textarea {
+    font: inherit; color: inherit; width: 100%; min-width: 0;
+    border: 1px solid var(--input-line); background: var(--input);
+    padding: 2px 5px; border-radius: 2px;
+  }
+  input:focus, textarea:focus { outline: 2px solid #2f6fd6; outline-offset: -1px; background: #fff; }
+  input.num { text-align: right; }
+  input.bad { outline: 2px solid #d33; }
+  .calc {
+    background: var(--calc); border: 1px solid #b9b6b6; padding: 2px 5px; min-height: 24px;
+    border-radius: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .unit { position: relative; }
+  .unit input { padding-right: 38px; }
+  .unit span { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }
+
+  /* Table */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { border: 1px solid #999; padding: 0; height: 26px; text-align: center; }
+  th { font-weight: normal; padding: 2px 4px; background: #fff; }
+  td.lbl { padding: 0 6px; }
+  td.right { text-align: right; padding: 0 6px; }
+  td input { border: 0; border-radius: 0; height: 100%; background: transparent; padding: 3px 6px; }
+  td.in { background: var(--input); }
+  td.cs input { background: transparent; }
+  td.out { padding: 0 6px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ref td, .ref th { border-color: var(--line); }
+  .sec { background: var(--head); font-weight: 600; }
+  tr.colhead th { border-top: 2px solid var(--line); border-bottom: 2px solid var(--line); }
+  tr.pause td:first-child { color: #444; }
+  tr.rep td:first-child { font-weight: 600; }
+  tr.tot td { border: 0; height: 28px; }
+  tr.tot td.calc { border: 1px solid #b9b6b6; text-align: right; padding: 0 6px; }
+  td.del { border: 0; width: 28px; }
+  td.del button { border: 0; background: none; color: #aaa; padding: 0 4px; font-size: 16px; }
+  td.del button:hover { color: #d33; }
+  .rowbtns { display: flex; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; }
+  .comment { display: grid; grid-template-columns: 110px 1fr; gap: 6px; align-items: start; margin-top: 12px; }
+  .comment b { padding-top: 4px; }
+  textarea { min-height: 70px; resize: vertical; }
+  .summary { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; color: #333; font-size: 13px; }
+  .summary b { font-variant-numeric: tabular-nums; }
+  .printonly { display: none; }
+  .tip { color: var(--muted); font-size: 12px; margin-top: 18px; }
+
+  @media (max-width: 720px) {
+    .sheet { padding: 14px 16px; margin: 0; box-shadow: none; }
+    .meta { grid-template-columns: 110px 1fr; }
+    .meta .span2, .meta .span3, .meta .span5 { grid-column: span 1; }
+    .meta label { text-align: left; }
+  }
+
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; font-size: 11px; }
+    .toolbar, .noprint, .rowbtns, td.del, th.del, .tip, .note { display: none !important; }
+    .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+    .printonly { display: block; }
+    .ptitle { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+    input, textarea { border-color: transparent; background: transparent; }
+    .meta input { background: var(--input); border-color: var(--input-line); }
+    td.in, td.in input { background: transparent; }
+    tr.empty { display: none; }
+    table { min-width: 0; }
+    th, td { height: 20px; }
+    textarea { display: none; }
+    .commentprint { display: block; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
+    .tablewrap { overflow: visible; }
+  }
+  .commentprint { display: none; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>Lafen · Trainingsfeedback</h1>
+  <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neit Training</button>
+  <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
+  <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
+  <input type="file" id="fileIn" accept=".json,application/json" hidden>
+  <button id="btnPdf" class="primary">PDF fir den Trainer</button>
+</div>
+
+<div class="sheet">
+  <p class="note">Blo Casen w.e.gl. ausfëllen, gro gëtt berechent.
+    <span class="k" style="background:var(--input)"></span>Agab
+    <span class="k" style="background:var(--calc)"></span>berechent</p>
+  <div class="printonly ptitle" id="ptitle"></div>
+
+  <div class="meta">
+    <label>Pdf-Num</label>
+    <div class="calc span5" id="pdfName"></div>
+
+    <label for="name">Num</label>
+    <input id="name" data-k="name">
+    <label for="paceThr">Pace Schwell</label>
+    <div><input id="paceThr" data-k="paceThr" class="num tm" placeholder="4:50,0"></div>
+    <label for="hrThr">HR Schwell</label>
+    <div><input id="hrThr" data-k="hrThr" class="num" inputmode="numeric" placeholder="156"></div>
+
+    <label for="date">Datum</label>
+    <input id="date" data-k="date" type="date">
+    <span></span><span></span>
+    <label for="clock">Auerzäit</label>
+    <input id="clock" data-k="clock" type="time">
+
+    <label for="training">Training</label>
+    <input id="training" data-k="training" class="span5" placeholder="z.B. 4x1600">
+    <label for="surface">Ënnergrond</label>
+    <input id="surface" data-k="surface" class="span5" placeholder="Piste, Stroos, Bësch …">
+    <label for="shoe">Schung</label>
+    <input id="shoe" data-k="shoe" class="span3">
+    <span class="noprint" style="grid-column: span 2"></span>
+    <label for="nutrition">Nutritioun</label>
+    <input id="nutrition" data-k="nutrition" class="span3">
+    <span class="noprint" style="grid-column: span 2"></span>
+    <label for="partner">Trainingspartner</label>
+    <input id="partner" data-k="partner" class="span3">
+    <span class="noprint" style="grid-column: span 2"></span>
+
+    <label for="temp">Temperatur</label>
+    <div class="unit"><input id="temp" data-k="temp" class="num" inputmode="decimal"><span>°C</span></div>
+    <span></span><span></span>
+    <label for="wind">Loft</label>
+    <div class="unit"><input id="wind" data-k="wind" class="num" inputmode="decimal"><span>km/h</span></div>
+  </div>
+
+  <div class="tablewrap">
+  <table>
+    <colgroup>
+      <col style="width:8%"><col style="width:9%"><col style="width:14%"><col style="width:10%">
+      <col style="width:10%"><col style="width:10%"><col style="width:8%"><col><col style="width:28px">
+    </colgroup>
+    <tbody class="ref">
+      <tr>
+        <td class="sec" colspan="2">Lafen</td><td style="border-top:0;border-left:2px solid var(--line)"></td>
+        <th>Pace</th><th>Max HR Rep.</th><th>Min HR Paus</th><th>Laktat</th>
+        <td style="border:0" colspan="2"></td>
+      </tr>
+      <tr>
+        <td style="border:0" colspan="2"></td><td class="right">MIN</td>
+        <td class="out" id="refPaceMin"></td><td class="out" id="refHrMin"></td>
+        <td class="out" id="refPauseMin"></td>
+        <td class="cs" id="cLacMin"><input class="num" data-k="lacMin" inputmode="decimal"></td>
+        <td style="border:0" colspan="2"></td>
+      </tr>
+      <tr>
+        <td style="border:0" colspan="2"></td><td class="right">MAX</td>
+        <td class="out" id="refPaceMax"></td><td class="out" id="refHrMax"></td>
+        <td class="out" id="refPauseMax"></td>
+        <td class="cs" id="cLacMax"><input class="num" data-k="lacMax" inputmode="decimal"></td>
+        <td style="border:0" colspan="2"></td>
+      </tr>
+    </tbody>
+    <tbody>
+      <tr class="colhead">
+        <th>Rep.</th><th>Dist.</th><th>Zäit (z.B. 2:01,2)</th><th>Pace</th>
+        <th>Max HR Rep.</th><th>Min HR Paus</th><th>Laktat</th><th style="text-align:left">Kommentar, Rep-specific</th><th class="del" style="border:0"></th>
+      </tr>
+    </tbody>
+    <tbody id="rows"></tbody>
+    <tbody>
+      <tr class="tot">
+        <td></td><td class="calc" id="totDist"></td><td class="calc" id="totTime"></td>
+        <td colspan="6"></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="rowbtns">
+    <button id="addRep">+ Rep</button>
+    <button id="remRep">− Rep</button>
+    <button id="fromTraining" title="Liest z.B. „6x1000“ oder „3x2k“ aus dem Feld Training">Reps aus „Training“ uleeën</button>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="comment">
+    <b>Kommentar:</b>
+    <div>
+      <textarea data-k="comment" id="comment"></textarea>
+      <div class="commentprint" id="commentPrint"></div>
+    </div>
+  </div>
+
+  <p class="tip">Zäiten: „7:38,2“ (min:sek), „1:02:30“ (h:min:sek) oder „45“ (sek). Distanz: „1600“, „1600m“, „1,6k“.
+    D'Faarwen funktionéieren wéi am Excel: 3-Faarwen-Skala (Min · Median · Max) iwwer d'Kolonn inkl. MIN/MAX-Referenz.
+    Alles gëtt automatesch am Browser zwëschegespäichert. „PDF fir den Trainer“ → am Drockdialog „Als PDF späicheren“ wielen; den Numm gëtt automatesch virgeschloen.</p>
+</div>
+
+<script>
+(() => {
+  const STORE = 'lafen-feedback-v1';
+  const RED = [0xF8,0x69,0x6B], YEL = [0xFF,0xEB,0x84], GRN = [0x63,0xBE,0x7B];
+
+  const blankRep = () => ({ dist:'', time:'', hr:'', lac:'', note:'',
+                            pTime:'', pHr:'', pLac:'', pNote:'' });
+  const defaults = () => ({
+    name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
+    training:'', surface:'', shoe:'', nutrition:'', partner:'', temp:'', wind:'',
+    lacMin:'1,5', lacMax:'5,0', comment:'',
+    reps: Array.from({length:6}, blankRep)
+  });
+
+  let S;
+  try { S = JSON.parse(localStorage.getItem(STORE)) || defaults(); } catch { S = defaults(); }
+  S = Object.assign(defaults(), S);
+
+  // ---------- parsing / formatting ----------
+  const num = s => {
+    if (s === null || s === undefined) return NaN;
+    s = String(s).trim().replace(',', '.');
+    return s === '' ? NaN : Number(s);
+  };
+  // time → seconds. "7:38,2" = m:ss ; "1:02:30" = h:mm:ss ; "45" = s
+  const secs = s => {
+    s = String(s ?? '').trim().replace(/,/g, '.');
+    if (!s) return NaN;
+    const p = s.split(':');
+    if (p.length > 3 || p.some(x => x === '' || isNaN(x))) return NaN;
+    return p.reduce((a, x) => a * 60 + Number(x), 0);
+  };
+  // distance → metres
+  const metres = s => {
+    s = String(s ?? '').trim().toLowerCase().replace(',', '.').replace(/\s/g, '');
+    if (!s) return NaN;
+    const m = s.match(/^(\d*\.?\d+)(km|k|m)?$/);
+    if (!m) return NaN;
+    return Number(m[1]) * (m[2] === 'k' || m[2] === 'km' ? 1000 : 1);
+  };
+  const dec = (v, d=1) => v.toFixed(d).replace('.', ',');
+  // round like Excel's display: strip float noise (15 significant digits) first, then round half up
+  const rnd = (v, f) => Math.round(Number((v * f).toPrecision(15))) / f;
+  // m:ss,0 (Excel "m:ss.0"); pad=true → mm:ss,0 (Excel "mm:ss.0", used for the rep pace column)
+  const fmtMS = (v, pad = false) => {
+    if (!isFinite(v)) return '';
+    const t = rnd(v, 10);
+    if (t >= 3600) return fmtHMS(t, true);
+    const m = Math.floor(t / 60), s = rnd(t - m * 60, 10);
+    return (pad && m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + dec(s);
+  };
+  // [h]:mm:ss  (tenths=true → h:mm:ss,0)
+  const fmtHMS = (v, tenths = false) => {
+    if (!isFinite(v)) return '';
+    const t = tenths ? rnd(v, 10) : rnd(v, 1);
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = rnd(t % 60, 10);
+    if (tenths) return h + ':' + String(m).padStart(2,'0') + ':' + (s < 10 ? '0' : '') + dec(s);
+    return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  };
+  const fmtDist = v => isFinite(v) ? (Number.isInteger(v) ? v : dec(v, 1)) + 'm' : '';
+
+  // ---------- Excel-style 3-colour scale (min / 50th percentile / max) ----------
+  const percentile = (arr, p) => {
+    const a = [...arr].sort((x, y) => x - y), i = (a.length - 1) * p, lo = Math.floor(i);
+    return a[lo] + (a[Math.min(lo + 1, a.length - 1)] - a[lo]) * (i - lo);
+  };
+  const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+  // cells: [{el, v}] ; lowColor / highColor
+  function scale(cells, low, high) {
+    const vals = cells.filter(c => isFinite(c.v)).map(c => c.v);
+    cells.forEach(c => c.el.style.background = '');
+    if (!vals.length) return;
+    const mn = Math.min(...vals), mx = Math.max(...vals), md = percentile(vals, .5);
+    cells.forEach(({el, v}) => {
+      if (!isFinite(v)) return;
+      let rgb;
+      if (mx === mn) rgb = YEL;
+      else if (v <= md) rgb = md === mn ? YEL : mix(low, YEL, (v - mn) / (md - mn));
+      else rgb = mx === md ? YEL : mix(YEL, high, (v - md) / (mx - md));
+      el.style.background = `rgb(${rgb.join(',')})`;
+    });
+  }
+
+  // ---------- rows ----------
+  const rowsEl = document.getElementById('rows');
+  function buildRows() {
+    rowsEl.innerHTML = S.reps.map((r, i) => `
+      <tr class="rep" data-i="${i}">
+        <td>${i + 1}</td>
+        <td class="in"><input data-r="${i}" data-f="dist" class="num" inputmode="decimal"></td>
+        <td class="in"><input data-r="${i}" data-f="time" class="num tm" inputmode="decimal"></td>
+        <td class="out" data-o="pace"></td>
+        <td class="in cs" data-c="hr"><input data-r="${i}" data-f="hr" class="num" inputmode="numeric"></td>
+        <td></td>
+        <td class="cs" data-c="lac"><input data-r="${i}" data-f="lac" class="num" inputmode="decimal"></td>
+        <td><input data-r="${i}" data-f="note"></td>
+        <td class="del"><button data-del="${i}" title="Dës Rep läschen">×</button></td>
+      </tr>
+      <tr class="pause" data-i="${i}">
+        <td>Paus</td><td></td>
+        <td class="in"><input data-r="${i}" data-f="pTime" class="num tm" inputmode="decimal"></td>
+        <td class="out">∞</td>
+        <td></td>
+        <td class="in cs" data-c="phr"><input data-r="${i}" data-f="pHr" class="num" inputmode="numeric"></td>
+        <td class="cs" data-c="lac"><input data-r="${i}" data-f="pLac" class="num" inputmode="decimal"></td>
+        <td><input data-r="${i}" data-f="pNote"></td>
+        <td class="del"></td>
+      </tr>`).join('');
+    rowsEl.querySelectorAll('input[data-f]').forEach(el => el.value = S.reps[el.dataset.r][el.dataset.f] ?? '');
+  }
+
+  // ---------- calculation ----------
+  const $ = id => document.getElementById(id);
+  function calc() {
+    // PDF name: YYMMDD Num -- Ënnergrond -- Training
+    let ymd = '';
+    if (S.date) { const [y, m, d] = S.date.split('-'); ymd = y.slice(2) + m + d; }
+    // =CONCATENATE(JJMMDD," ",Num," -- ",Ënnergrond," -- ",Training)
+    const pdfName = `${ymd} ${S.name} -- ${S.surface} -- ${S.training}`;
+    $('pdfName').textContent = pdfName;
+    $('ptitle').textContent = 'Trainingsfeedback Lafen · ' + pdfName;
+
+    const paceThr = secs(S.paceThr), hrThr = num(S.hrThr);
+    $('paceThr').classList.toggle('bad', S.paceThr !== '' && !isFinite(paceThr));
+
+    // MIN / MAX reference rows
+    const pMin = isFinite(paceThr) ? paceThr * 1.08 : NaN, pMax = isFinite(paceThr) ? paceThr * 0.92 : NaN;
+    const hMin = hrThr - 15, hMax = hrThr + 25, qMin = hrThr - 30, qMax = hrThr + 10;
+    $('refPaceMin').textContent = fmtMS(pMin);
+    $('refPaceMax').textContent = fmtMS(pMax);
+    $('refHrMin').textContent   = isFinite(hrThr) ? hMin : '';
+    $('refHrMax').textContent   = isFinite(hrThr) ? hMax : '';
+    $('refPauseMin').textContent = isFinite(hrThr) ? qMin : '';
+    $('refPauseMax').textContent = isFinite(hrThr) ? qMax : '';
+
+    const paceCells = [{el:$('paceThr'), v:paceThr}, {el:$('refPaceMin'), v:pMin}, {el:$('refPaceMax'), v:pMax}];
+    const hrCells   = [{el:$('hrThr'), v:hrThr}, {el:$('refHrMin'), v:hMin}, {el:$('refHrMax'), v:hMax}];
+    const phrCells  = [{el:$('refPauseMin'), v:qMin}, {el:$('refPauseMax'), v:qMax}];
+    const lacCells  = [{el:$('cLacMin'), v:num(S.lacMin)}, {el:$('cLacMax'), v:num(S.lacMax)}];
+
+    let totD = 0, totT = 0, repT = 0, repD = 0, hrs = [], phrs = [];
+    rowsEl.querySelectorAll('tr').forEach(tr => {
+      const r = S.reps[tr.dataset.i];
+      if (tr.classList.contains('rep')) {
+        const d = metres(r.dist), t = secs(r.time), pace = t / d * 1000;
+        tr.querySelector('[data-f=dist]').classList.toggle('bad', r.dist !== '' && !isFinite(d));
+        tr.querySelector('[data-f=time]').classList.toggle('bad', r.time !== '' && !isFinite(t));
+        const o = tr.querySelector('[data-o=pace]');
+        o.textContent = isFinite(pace) && d > 0 ? fmtMS(pace, true) : '';
+        paceCells.push({el:o, v: d > 0 ? pace : NaN});
+        hrCells.push({el:tr.querySelector('[data-c=hr]'), v:num(r.hr)});
+        lacCells.push({el:tr.querySelector('[data-c=lac]'), v:num(r.lac)});
+        if (isFinite(d)) totD += d;
+        if (isFinite(t)) totT += t;
+        if (isFinite(d) && isFinite(t)) { repD += d; repT += t; }
+        if (isFinite(num(r.hr))) hrs.push(num(r.hr));
+        tr.classList.toggle('empty', !(r.dist || r.time || r.hr || r.lac || r.note));
+      } else {
+        const t = secs(r.pTime);
+        tr.querySelector('[data-f=pTime]').classList.toggle('bad', r.pTime !== '' && !isFinite(t));
+        phrCells.push({el:tr.querySelector('[data-c=phr]'), v:num(r.pHr)});
+        lacCells.push({el:tr.querySelector('[data-c=lac]'), v:num(r.pLac)});
+        if (isFinite(t)) totT += t;
+        if (isFinite(num(r.pHr))) phrs.push(num(r.pHr));
+        tr.classList.toggle('empty', !(r.pTime || r.pHr || r.pLac || r.pNote));
+      }
+    });
+
+    // Excel colour directions: pace low(=fast)→red, high→green; HR/lactate low→green, high→red
+    scale(paceCells, RED, GRN);
+    scale(hrCells, GRN, RED);
+    scale(phrCells, GRN, RED);
+    scale(lacCells, GRN, RED);
+
+    $('totDist').textContent = totD ? fmtDist(totD) : '';
+    $('totTime').textContent = totT ? fmtHMS(totT) : '';
+
+    const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const parts = [];
+    if (repD) parts.push(`Ø Pace Reps: <b>${fmtMS(repT / repD * 1000)}/km</b>`);
+    if (hrs.length) parts.push(`Ø Max HR Rep.: <b>${Math.round(avg(hrs))}</b>`);
+    if (phrs.length) parts.push(`Ø Min HR Paus: <b>${Math.round(avg(phrs))}</b>`);
+    if (repT) parts.push(`Belaaschtungszäit: <b>${fmtHMS(repT)}</b>`);
+    $('summary').innerHTML = parts.join('');
+    $('commentPrint').textContent = S.comment;
+
+    try { localStorage.setItem(STORE, JSON.stringify(S)); } catch {}
+  }
+
+  // ---------- binding ----------
+  function fillMeta() {
+    document.querySelectorAll('[data-k]').forEach(el => {
+      el.value = S[el.dataset.k] ?? '';
+    });
+  }
+  // time fields show the Excel display format (m:ss,0) when not being edited; the typed value is kept
+  const rawOf = el => el.dataset.k ? S[el.dataset.k] : S.reps[el.dataset.r][el.dataset.f];
+  const showTimes = () => document.querySelectorAll('input.tm').forEach(el => {
+    if (el === document.activeElement) return;
+    const raw = rawOf(el) ?? '', v = secs(raw);
+    el.value = isFinite(v) ? fmtMS(v) : raw;
+  });
+  document.addEventListener('focusin', e => { if (e.target.classList?.contains('tm')) e.target.value = rawOf(e.target) ?? ''; });
+  document.addEventListener('focusout', () => setTimeout(showTimes));
+
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (el.dataset.k) S[el.dataset.k] = el.value;
+    else if (el.dataset.f) S.reps[el.dataset.r][el.dataset.f] = el.value;
+    else return;
+    calc();
+  });
+  rowsEl.addEventListener('click', e => {
+    const i = e.target.dataset.del;
+    if (i === undefined) return;
+    S.reps.splice(Number(i), 1);
+    if (!S.reps.length) S.reps.push(blankRep());
+    buildRows(); calc(); showTimes();
+  });
+  // Enter → next input (quick entry on a phone/keyboard)
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    const all = [...document.querySelectorAll('.sheet input:not([type=file])')];
+    const n = all[all.indexOf(e.target) + 1];
+    if (n) n.focus();
+  });
+
+  $('addRep').onclick = () => { S.reps.push(blankRep()); buildRows(); calc(); showTimes(); };
+  $('remRep').onclick = () => { if (S.reps.length > 1) { S.reps.pop(); buildRows(); calc(); showTimes(); } };
+  $('fromTraining').onclick = () => {
+    const m = String(S.training).toLowerCase().replace(',', '.').match(/(\d+)\s*[x×]\s*(\d*\.?\d+\s*(?:km|k|m)?)/);
+    if (!m) { alert('Am Feld „Training“ keen Muster wéi „6x1000“ fonnt.'); return; }
+    const n = Number(m[1]), d = metres(m[2]);
+    if (S.reps.some(r => r.time || r.hr) && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
+    S.reps = Array.from({length:n}, () => Object.assign(blankRep(), {dist: isFinite(d) ? String(d) : ''}));
+    buildRows(); calc(); showTimes();
+  };
+
+  $('btnNew').onclick = () => {
+    if (!confirm('Neit Training ufänken? Num, Schwellen, Schung a Laktat-Grenzen bleiwen.')) return;
+    const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, lacMin:S.lacMin, lacMax:S.lacMax};
+    S = Object.assign(defaults(), keep);
+    fillMeta(); buildRows(); calc(); showTimes();
+  };
+  $('btnSave').onclick = () => {
+    const blob = new Blob([JSON.stringify(S, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = ($('pdfName').textContent || 'training') + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('btnLoad').onclick = () => $('fileIn').click();
+  $('fileIn').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { S = Object.assign(defaults(), JSON.parse(await f.text())); fillMeta(); buildRows(); calc(); showTimes(); }
+    catch { alert('Fichier konnt net gelies ginn.'); }
+    e.target.value = '';
+  };
+  $('btnPdf').onclick = () => {
+    const old = document.title;
+    document.title = $('pdfName').textContent || old;   // becomes the suggested PDF filename
+    window.print();
+    setTimeout(() => document.title = old, 500);
+  };
+
+  fillMeta(); buildRows(); calc(); showTimes();
+})();
+</script>
+</body>
+</html>
