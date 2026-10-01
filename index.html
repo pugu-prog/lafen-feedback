@@ -40,6 +40,8 @@
     font: 900 18px/1 "Titillium Web", Inter, sans-serif; letter-spacing: .02em; text-transform: uppercase;
   }
   .toolbar h1 .sub { font-weight: 700; opacity: .9; }
+  /* SauerBeen Schrëftzuch (wäiss, transparent): sauerbeen-schriftzug.png */
+  .sblogo { display: block; height: 30px; width: auto; flex: none; }
   button {
     font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 18px; cursor: pointer;
     border: 1px solid #c3c8da; background: #fff; color: var(--sb-blue);
@@ -142,6 +144,7 @@
     .printonly { display: block; }
     .ptitle { display: flex !important; align-items: center; gap: 10px; background: var(--sb-blue); color: #fff;
               font: 900 15px "Titillium Web", Inter, sans-serif; text-transform: uppercase; padding: 6px 10px; margin: 0 0 8px; }
+    .ptitle .sblogo { height: 24px; }
     input, textarea { border-color: transparent; background: transparent; }
     .meta input { background: var(--input); border-color: var(--input-line); }
     td.in, td.in input { background: transparent; }
@@ -208,7 +211,7 @@
 <body>
 
 <div class="toolbar">
-  <h1>SauerBeen <span class="sub">· Trainingsfeedback Lafen</span></h1>
+  <h1><img class="sblogo" src="sauerbeen-schriftzug.png" alt="SauerBeen"><span class="sub">Trainingsfeedback Lafen</span></h1>
   <button id="btnImport" title="Reps a Pausen aus Foto, Screenshot, FIT/TCX/GPX, Strava oder Trainingsplang uleeën">Training importéieren</button>
   <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neien Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
@@ -223,7 +226,7 @@
   <p class="note">Blo Casen w.e.gl. ausfëllen, gro gëtt berechent.
     <span class="k" style="background:var(--input)"></span>Agab
     <span class="k" style="background:var(--calc)"></span>berechent</p>
-  <div class="printonly ptitle"><span id="ptitle"></span></div>
+  <div class="printonly ptitle"><img class="sblogo" src="sauerbeen-schriftzug.png" alt="SauerBeen"><span id="ptitle"></span></div>
 
   <div class="meta">
     <label>Pdf-Num</label>
@@ -548,7 +551,7 @@
     // =CONCATENATE(JJMMDD," ",Num," -- ",Ënnergrond," -- ",Training)
     const pdfName = `${ymd} ${S.name} -- ${S.surface} -- ${S.training}`;
     $('pdfName').textContent = pdfName;
-    $('ptitle').textContent = 'SauerBeen · Trainingsfeedback Lafen · ' + pdfName;
+    $('ptitle').textContent = 'Trainingsfeedback Lafen · ' + pdfName;
 
     const paceThr = secs(S.paceThr), hrThr = num(S.hrThr);
     $('paceThr').classList.toggle('bad', S.paceThr !== '' && !isFinite(paceThr));

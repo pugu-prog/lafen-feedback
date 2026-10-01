@@ -12,7 +12,10 @@
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
   .toolbar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--sb-blue); color: #fff; }
   .toolbar h1 { margin: 0 auto 0 0; font: 900 18px/1 "Titillium Web", Inter, sans-serif; letter-spacing: .02em; text-transform: uppercase; }
+  .toolbar h1 { display: flex; align-items: center; gap: 10px; }
   .toolbar h1 .sub { font-weight: 700; opacity: .9; }
+  /* SauerBeen Schrëftzuch (wäiss, transparent): sauerbeen-schriftzug.png */
+  .sblogo { display: block; height: 30px; width: auto; flex: none; }
   .toolbar a { color: #fff; border: 1px solid rgba(255,255,255,.7); border-radius: 18px; padding: 6px 14px; text-decoration: none; font-weight: 500; }
   .toolbar a:hover { background: rgba(255,255,255,.12); }
   .toolbar a.primary { background: var(--sb-yellow); border-color: var(--sb-yellow); color: var(--sb-blue); font-weight: 600; }
@@ -37,7 +40,7 @@
 </head>
 <body>
 <div class="toolbar">
-  <h1>SauerBeen <span class="sub">· Hëllef</span></h1>
+  <h1><img class="sblogo" src="sauerbeen-schriftzug.png" alt="SauerBeen"><span class="sub">Hëllef</span></h1>
   <a href="https://form.jotform.com/262735789931069" target="_blank" rel="noopener">Feedback</a>
   <a class="primary" href="./">← Zréck zum Tool</a>
 </div>
