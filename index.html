@@ -261,7 +261,7 @@
     <button id="addRep">+ Rep</button>
     <button id="remRep">− Rep</button>
     <button id="fromTraining" title="Liest z.B. „6x1000 (60s)“ oder „4x(1600-1200) (60s)“ aus dem Feld Training">Reps aus „Training“ uleeën</button>
-    <select id="preset" title="Eng Strecke als eenzeg Rep uleeën">
+    <select id="preset" title="Strecke uleeën; vun 3 km un eng Rep pro km">
       <option value="">Strecke virwielen …</option>
       <option value="400">400 m</option>
       <option value="800">800 m</option>
@@ -582,7 +582,11 @@
     e.target.value = '';
     if (!v) return;
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    S.reps = [Object.assign(blankRep(), { dist: v.replace('.', ',') })];
+    // from 3 km on: one rep per km (km splits), the remainder as last rep (HM: 21 × 1000 m + 97,5 m)
+    const total = Number(v), n = total >= 3000 ? Math.floor(total / 1000) : 0;
+    const rest = Math.round((total - n * 1000) * 1000) / 1000;
+    const dists = n ? [...Array(n).fill(1000), ...(rest > 0 ? [rest] : [])] : [total];
+    S.reps = dists.map(d => Object.assign(blankRep(), { dist: String(d).replace('.', ',') }));
     if (!S.training) S.training = label;
     fillMeta(); buildRows(); calc(); showTimes();
   };
