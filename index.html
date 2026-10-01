@@ -1446,8 +1446,8 @@
   })();
 
   // ================= Weather from Open-Meteo (free, no key) for the date + time of day =================
-  // place: GPS start of an imported activity, else Ettelbréck. Only empty fields (or values it filled itself) are set.
-  const WX_HOME = { lat: 49.8475, lon: 6.1042, name: 'Ettelbréck' };
+  // place: GPS start of an imported activity, else Dikrech. Only empty fields (or values it filled itself) are set.
+  const WX_HOME = { lat: 49.8681, lon: 6.1597, name: 'Dikrech' };
   let wxTimer = 0, wxReq = 0, wxBusy = false;
   function wxIsAuto() { return !!(S.wxAuto && S.temp === S.wxAuto.temp && S.wind === S.wxAuto.wind); }
   async function maybeWeather() {
