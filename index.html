@@ -48,7 +48,9 @@
   button:focus-visible { outline: 2px solid var(--sb-yellow); outline-offset: 2px; }
   button.primary { background: var(--sb-blue); border-color: var(--sb-blue); color: #fff; }
   button.primary:hover { background: var(--sb-blue-dark); }
-  .toolbar button { background: transparent; border-color: rgba(255,255,255,.7); color: #fff; }
+  .toolbar button, .toolbar a.btn { background: transparent; border: 1px solid rgba(255,255,255,.7); color: #fff; }
+  .toolbar a.btn { font-weight: 500; padding: 6px 14px; border-radius: 18px; text-decoration: none; }
+  .toolbar a.btn:hover { background: rgba(255,255,255,.12); }
   .toolbar button:hover { background: rgba(255,255,255,.12); }
   .toolbar button.primary { background: var(--sb-yellow); border-color: var(--sb-yellow); color: var(--sb-blue); font-weight: 600; }
   .toolbar button.primary:hover { background: #fff36b; }
@@ -211,6 +213,7 @@
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
   <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
   <input type="file" id="fileIn" accept=".json,application/json" hidden>
+  <a class="btn" href="https://form.jotform.com/262735789931069" target="_blank" rel="noopener" title="Problem gemellt oder Iddi? Kuerze Formulaire fir d'Testpersounen">Feedback</a>
   <button id="btnPdf" class="primary">PDF fir den Trainer</button>
 </div>
 
