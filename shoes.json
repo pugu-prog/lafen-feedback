@@ -1,0 +1,24 @@
+{
+  "info": "Laf-Schong fir de Lafen Trainingsfeedback. Mark → Modeller (ouni Versiounsnummer, déi gëtt separat agedroen). Nei Modeller einfach an d'Lëscht vun der Mark derbäisetzen.",
+  "updated": "2026-10-01",
+  "brands": {
+    "Adidas": ["Adizero Adios Pro", "Adizero Boston", "Adizero Evo SL", "Adizero Prime X", "Adizero SL", "Adizero Takumi Sen", "Adizero Avanti", "Adistar", "Supernova Prima", "Supernova Rise", "Supernova Stride", "Ultraboost", "Terrex Agravic", "Terrex Agravic Speed", "Terrex Speed Ultra"],
+    "Altra": ["Escalante", "Experience Flow", "Experience Form", "Lone Peak", "Mont Blanc", "Olympus", "Paradigm", "Rivera", "Timp", "Torin", "Vanish Carbon", "Via Olympus"],
+    "Asics": ["Evoride Speed", "Fuji Lite", "Gel-Cumulus", "Gel-Excite", "Gel-Kayano", "Gel-Nimbus", "Gel-Trabuco", "Glideride Max", "GT-1000", "GT-2000", "Hyper Speed", "Magic Speed", "Megablast", "Metaspeed Edge", "Metaspeed MD", "Metaspeed Ray", "Metaspeed Sky", "Noosa Tri", "Novablast", "Sonicblast", "Superblast", "Trabuco Max"],
+    "Brooks": ["Adrenaline GTS", "Caldera", "Cascadia", "Catamount", "Divide", "Ghost", "Ghost Max", "Glycerin", "Glycerin Max", "Hyperion", "Hyperion Elite", "Hyperion Max", "Launch", "Levitate"],
+    "Hoka": ["Arahi", "Bondi", "Challenger", "Cielo X1", "Cielo X MD", "Clifton", "Gaviota", "Kawana", "Mach", "Mach X", "Mafate Speed", "Rincon", "Rocket X", "Skyflow", "Skyward X", "Speedgoat", "Tecton X", "Torrent", "Zinal"],
+    "Inov-8": ["Mudtalon", "Roclite", "Trailfly", "Trailtalon"],
+    "Karhu": ["Fusion", "Ikoni", "Mestari", "Synchron"],
+    "Kiprun": ["KD500", "KD900", "KD900X", "KS500", "KS900", "MT Cushion", "XT8"],
+    "La Sportiva": ["Bushido", "Jackal", "Prodigio"],
+    "Mizuno": ["Hyperwarp", "Neo Vista", "Neo Zen", "Wave Daichi", "Wave Inspire", "Wave Mujin", "Wave Rebellion Flash", "Wave Rebellion Pro", "Wave Rebellion Sonic", "Wave Rider", "Wave Sky"],
+    "New Balance": ["Fresh Foam X 1080", "Fresh Foam X 880", "Fresh Foam X Hierro", "Fresh Foam X More", "FuelCell MD-X", "FuelCell Propel", "FuelCell Rebel", "FuelCell SC Elite", "FuelCell SC Trainer", "FuelCell SuperComp Pacer"],
+    "Nike": ["Alphafly", "Invincible", "Juniper Trail", "Pegasus", "Pegasus Plus", "Pegasus Premium", "Pegasus Trail", "Streakfly", "Structure", "Ultrafly", "Vaporfly", "Vomero", "Vomero Plus", "Wildhorse", "Zegama", "Zoom Fly", "ZoomX Dragonfly", "Maxfly"],
+    "On": ["Cloudboom Echo", "Cloudboom Max", "Cloudboom Strike", "Cloudeclipse", "Cloudflow", "Cloudflyer", "Cloudgo", "Cloudmonster", "Cloudmonster Hyper", "Cloudrunner", "Cloudstratus", "Cloudsurfer", "Cloudsurfer Next", "Cloudultra", "Cloudvista"],
+    "Puma": ["Deviate Nitro", "Deviate Nitro Elite", "evoSPEED", "Fast-FWD Nitro Elite", "Fast-R Nitro Elite", "ForeverRun Nitro", "Magnify Nitro", "MagMax Nitro", "Velocity Nitro"],
+    "Salomon": ["Aero Blaze", "Aero Glide", "Aero Volt", "Genesis", "S/Lab Genesis", "S/Lab Phantasm", "S/Lab Ultra", "Sense Ride", "Speedcross", "Thundercross", "Ultra Glide"],
+    "Saucony": ["Axon", "Endorphin Cheetah", "Endorphin Edge", "Endorphin Elite", "Endorphin Pro", "Endorphin Speed", "Guide", "Hurricane", "Kinvara", "Peregrine", "Ride", "Tempus", "Triumph", "Xodus Ultra"],
+    "Topo": ["Phantom", "Specter", "Ultrafly", "Ultraventure"],
+    "Under Armour": ["Flow Velociti", "Infinite Elite", "Velociti Elite"]
+  }
+}

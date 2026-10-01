@@ -65,6 +65,12 @@
     background: var(--calc); border: 1px solid #b9b6b6; padding: 2px 5px; min-height: 24px;
     border-radius: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .shoe { display: grid; grid-template-columns: 1fr 1.4fr 64px; gap: 4px; }
+  .rack { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+  .rack:empty, .rackrow:has(+ .rack:empty) { display: none; }
+  .rack button { font-size: 12px; padding: 2px 4px 2px 9px; border-radius: 12px; display: inline-flex; gap: 4px; align-items: center; }
+  .rack button i { font-style: normal; color: #999; padding: 0 4px; border-radius: 8px; }
+  .rack button i:hover { color: #d33; background: #fbe3e3; }
   .unit { position: relative; }
   .unit input { padding-right: 38px; }
   .unit span { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }
@@ -110,7 +116,7 @@
   @media print {
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff; font-size: 11px; }
-    .toolbar, .noprint, .rowbtns, td.del, th.del, .tip, .note { display: none !important; }
+    .toolbar, .noprint, .rowbtns, td.del, th.del, .tip, .note, .rackrow { display: none !important; }
     .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; }
     .printonly { display: block; }
     .ptitle { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
@@ -216,9 +222,15 @@
     <input id="training" data-k="training" class="span5" placeholder="z.B. 4x1600">
     <label for="surface">Ënnergrond</label>
     <input id="surface" data-k="surface" class="span5" placeholder="Piste, Stroos, Bësch …">
-    <label for="shoe">Schung</label>
-    <input id="shoe" data-k="shoe" class="span3">
+    <label for="shoeBrand">Schung</label>
+    <div class="span3 shoe">
+      <input id="shoeBrand" data-k="shoeBrand" list="brandList" placeholder="Mark" autocomplete="off">
+      <input id="shoeModel" data-k="shoeModel" list="modelList" placeholder="Modell" autocomplete="off" aria-label="Modell">
+      <input id="shoeVer" data-k="shoeVer" placeholder="Vers." class="num" inputmode="decimal" aria-label="Versioun">
+    </div>
     <span style="grid-column: span 2"></span>
+    <span class="rackrow"></span>
+    <div class="span5 rack rackrow" id="rack"></div>
     <label for="nutrition">Nutritioun</label>
     <input id="nutrition" data-k="nutrition" class="span3">
     <span style="grid-column: span 2"></span>
@@ -296,6 +308,8 @@
       <option value="42195">Marathon</option>
     </select>
   </div>
+  <datalist id="brandList"></datalist>
+  <datalist id="modelList"></datalist>
   <datalist id="distList">
     <option value="200"><option value="400"><option value="600"><option value="800"><option value="1000">
     <option value="1200"><option value="1600"><option value="2000"><option value="3000"><option value="5000">
@@ -370,7 +384,7 @@
                             pTime:'', pHr:'', pLac:'', pNote:'' });
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
-    training:'', surface:'', shoe:'', nutrition:'', partner:'', temp:'', wind:'',
+    training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
     lacMin:'1,5', lacMax:'5,0', comment:'',
     reps: Array.from({length:6}, blankRep)
   });
@@ -378,6 +392,15 @@
   let S;
   try { S = JSON.parse(localStorage.getItem(STORE)) || defaults(); } catch { S = defaults(); }
   S = Object.assign(defaults(), S);
+  // older saves only have one "shoe" text → split into brand / model / version
+  if (!S.shoeBrand && !S.shoeModel && S.shoe) {
+    const t = String(S.shoe).trim();
+    const b = ['New Balance', 'La Sportiva', 'Under Armour'].find(m => t.toLowerCase().startsWith(m.toLowerCase() + ' ')) || t.split(/\s+/)[0];
+    let rest = t.slice(b.length).trim(), ver = '';
+    const m = rest.match(/^(.*?)\s+(\d+(?:[.,]\d+)?|v\d+)$/i);
+    if (m) { rest = m[1]; ver = m[2]; }
+    Object.assign(S, { shoeBrand: b, shoeModel: rest, shoeVer: ver });
+  }
 
   // ---------- parsing / formatting ----------
   const num = s => {
@@ -549,6 +572,7 @@
     if (repT) parts.push(`Belaaschtungszäit: <b>${fmtHMS(repT)}</b>`);
     $('summary').innerHTML = parts.join('');
     $('commentPrint').textContent = S.comment;
+    S.shoe = [S.shoeBrand, S.shoeModel, S.shoeVer].map(x => String(x || '').trim()).filter(Boolean).join(' ');
 
     try { localStorage.setItem(STORE, JSON.stringify(S)); } catch {}
   }
@@ -624,8 +648,9 @@
   };
 
   $('btnNew').onclick = () => {
-    if (!confirm('Neien Training ufänken? Num, Schwellen, Schung a Laktat-Grenzen bleiwen.')) return;
-    const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, lacMin:S.lacMin, lacMax:S.lacMax};
+    if (!confirm('Neien Training ufänken? Num, Schwellen, Schong a Laktat-Grenzen bleiwen.')) return;
+    const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
+                  shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
@@ -1319,6 +1344,65 @@
     try { status('Mat Strava verbannen …'); await tokenCall({ code: q.get('code') }); stravaUi(); await stravaList(); }
     catch (err) { status(err.message, true); }
   })();
+
+  // ================= Shoes: list from shoes.json + the runner's own shoe rack =================
+  const SHOES_URL = location.protocol.startsWith('http') ? 'shoes.json' : 'https://pugu-prog.github.io/lafen-feedback/shoes.json';
+  const RACK = 'lafen-schongschaf';
+  let SHOES = {};
+  const opt = v => `<option value="${String(v).replace(/"/g, '&quot;')}">`;
+  const brandOf = b => Object.keys(SHOES).find(k => k.toLowerCase() === String(b || '').trim().toLowerCase());
+  function fillModels() {
+    const b = brandOf(S.shoeBrand);
+    // known brand: its models; nothing typed yet: every model as "Modell" so typing "Triumph" finds it
+    const models = b ? SHOES[b] : S.shoeBrand ? [] : [...new Set(Object.values(SHOES).flat())].sort();
+    $('modelList').innerHTML = models.map(opt).join('');
+  }
+  const rackGet = () => { try { return JSON.parse(localStorage.getItem(RACK)) || []; } catch { return []; } };
+  const rackSet = r => { try { localStorage.setItem(RACK, JSON.stringify(r)); } catch {} };
+  const shoeKey = o => [o.b, o.m, o.v].join('|').toLowerCase();
+  function rackAdd(typed = false) {
+    const o = { b: S.shoeBrand.trim(), m: S.shoeModel.trim(), v: String(S.shoeVer).trim(), t: Date.now(), typed };
+    if (!o.b || !o.m) return;
+    // same brand + model without version, or typed less than a minute ago (still being edited) → replace it
+    const same = x => (x.b + '|' + x.m).toLowerCase() === (o.b + '|' + o.m).toLowerCase();
+    const r = rackGet().filter(x => shoeKey(x) !== shoeKey(o) && !(same(x) && (!x.v || (typed && x.typed && o.t - x.t < 60000))));
+    r.unshift(o); rackSet(r.slice(0, 8)); renderRack();
+  }
+  function renderRack() {
+    const cur = shoeKey({ b: S.shoeBrand.trim(), m: S.shoeModel.trim(), v: String(S.shoeVer).trim() });
+    $('rack').innerHTML = rackGet().filter(x => shoeKey(x) !== cur).map((x, i) =>
+      `<button type="button" data-rack="${shoeKey(x)}" title="Dëse Schong wielen">${[x.b, x.m, x.v].filter(Boolean).join(' ').replace(/</g, '&lt;')}<i data-del="1" title="Aus dem Schongschaf läschen">×</i></button>`
+    ).join('');
+    if ($('rack').innerHTML) $('rack').insertAdjacentHTML('afterbegin', '<span>Mäi Schongschaf:</span>');
+  }
+  $('rack').addEventListener('click', e => {
+    const b = e.target.closest('button[data-rack]'); if (!b) return;
+    const key = b.dataset.rack;
+    if (e.target.dataset.del) { rackSet(rackGet().filter(x => shoeKey(x) !== key)); renderRack(); return; }
+    const x = rackGet().find(y => shoeKey(y) === key); if (!x) return;
+    Object.assign(S, { shoeBrand: x.b, shoeModel: x.m, shoeVer: x.v });
+    fillMeta(); fillModels(); calc(); rackAdd();
+  });
+  ['shoeBrand', 'shoeModel', 'shoeVer'].forEach(id => $(id).addEventListener('change', () => {
+    if (id === 'shoeBrand') { const b = brandOf(S.shoeBrand); if (b && b !== S.shoeBrand) { S.shoeBrand = b; $('shoeBrand').value = b; } }
+    if (id === 'shoeModel' && !S.shoeBrand.trim()) {                 // model typed first → fill in its brand
+      const hits = Object.keys(SHOES).filter(k => SHOES[k].some(m => m.toLowerCase() === S.shoeModel.trim().toLowerCase()));
+      if (hits.length === 1) { S.shoeBrand = hits[0]; $('shoeBrand').value = hits[0]; }
+    }
+    fillModels(); calc();
+  }));
+  // remember the shoe once the runner leaves the three shoe fields
+  document.querySelector('.shoe').addEventListener('focusout', () => setTimeout(() => {
+    if (!document.querySelector('.shoe').contains(document.activeElement)) rackAdd(true);
+  }));
+  $('shoeBrand').addEventListener('input', fillModels);
+  function initShoes() {
+    const b = brandOf(S.shoeBrand);
+    if (b && b !== S.shoeBrand) { S.shoeBrand = b; fillMeta(); calc(); }
+    $('brandList').innerHTML = Object.keys(SHOES).sort().map(opt).join('');
+    fillModels(); renderRack();
+  }
+  fetch(SHOES_URL).then(r => r.ok ? r.json() : {}).then(j => { SHOES = j.brands || {}; }).catch(() => {}).finally(initShoes);
   window.lafenImport = { importFile, parsePlan, parseLaps, parseFIT, evaluate };   // for testing
 
   fillMeta(); buildRows(); calc(); showTimes();
