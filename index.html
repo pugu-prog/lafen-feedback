@@ -241,7 +241,7 @@
     </div>
   </div>
 
-  <p class="tip">Zäiten: „7:38,2“ (min:sek), „1:02:30“ (h:min:sek) oder „45“ (sek). Distanz: „1600“, „1600m“, „1,6k“.
+  <p class="tip">Zäiten: „7:38,2“ oder „4:37,15“ (min:sek), „1:02:30“ (h:min:sek) oder „45“ (sek). Distanz: „1600“, „1600m“, „1,6k“.
     D'Faarwen funktionéieren wéi am Excel: 3-Faarwen-Skala (Min · Median · Max) iwwer d'Kolonn inkl. MIN/MAX-Referenz.
     Alles gëtt automatesch am Browser zwëschegespäichert. „PDF fir den Trainer“ → am Drockdialog „Als PDF späicheren“ wielen; den Numm gëtt automatesch virgeschloen.</p>
 </div>
@@ -441,12 +441,20 @@
       el.value = S[el.dataset.k] ?? '';
     });
   }
-  // time fields show the Excel display format (m:ss,0) when not being edited; the typed value is kept
+  // time fields are shown formatted (m:ss,0, or m:ss,00 when hundredths were typed) when not being
+  // edited; the typed value is kept unrounded and used for all calculations
   const rawOf = el => el.dataset.k ? S[el.dataset.k] : S.reps[el.dataset.r][el.dataset.f];
+  const fmtTime = raw => {
+    const v = secs(raw);
+    if (!isFinite(v)) return raw;
+    const frac = (String(raw).match(/[.,](\d+)$/) || ['', ''])[1];
+    if (frac.length < 2 || v >= 3600) return fmtMS(v);
+    const t = rnd(v, 100), m = Math.floor(t / 60), s = rnd(t - m * 60, 100);
+    return m + ':' + (s < 10 ? '0' : '') + dec(s, 2);
+  };
   const showTimes = () => document.querySelectorAll('input.tm').forEach(el => {
     if (el === document.activeElement) return;
-    const raw = rawOf(el) ?? '', v = secs(raw);
-    el.value = isFinite(v) ? fmtMS(v) : raw;
+    el.value = fmtTime(rawOf(el) ?? '');
   });
   document.addEventListener('focusin', e => { if (e.target.classList?.contains('tm')) e.target.value = rawOf(e.target) ?? ''; });
   document.addEventListener('focusout', () => setTimeout(showTimes));
