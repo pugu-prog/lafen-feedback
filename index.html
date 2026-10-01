@@ -154,6 +154,26 @@
   #impPrev tr.t-pause td:first-child { background: #fbf3d9; }
   #impPrev tr.t-skip td { color: #999; }
   #impPrev tr.t-skip input { color: #999; text-decoration: line-through; }
+  #drop {
+    display: grid; gap: 2px; place-items: center; text-align: center; cursor: pointer;
+    border: 2px dashed var(--input-line); border-radius: 8px; background: #f3f8fd; padding: 18px 12px; margin: 8px 0;
+  }
+  #drop span { font-size: 12px; color: var(--muted); }
+  #drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  #drop.over, body.dragging #drop { border-color: #2f6fd6; background: #e3eefc; }
+  #dropAll {
+    position: fixed; inset: 0; z-index: 50; display: none; place-items: center;
+    background: rgba(47,111,214,.15); border: 4px dashed #2f6fd6; font-size: 22px; font-weight: 600; color: #1d4fa3;
+  }
+  body.dragging #dropAll { display: grid; }
+  @media print { #dropAll { display: none !important; } }
+  #stravaBox { border: 1px solid #f3c7a8; background: #fff6ef; border-radius: 6px; padding: 8px 10px; margin: 10px 0; }
+  #stravaBox[hidden] { display: none; }
+  #stravaBtn { background: #fc4c02; border-color: #fc4c02; color: #fff; }
+  #stravaList { display: grid; gap: 4px; margin-top: 8px; max-height: 30vh; overflow-y: auto; }
+  #stravaList button { text-align: left; font-size: 13px; display: flex; justify-content: space-between; gap: 10px; }
+  #stravaList small { color: var(--muted); white-space: nowrap; }
+  #stravaOff { font-size: 12px; color: var(--muted); background: none; border: 0; text-decoration: underline; padding: 0 4px; }
   #imp .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   .rowbtns select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; }
 </style>
@@ -162,7 +182,7 @@
 
 <div class="toolbar">
   <h1>Lafen · Trainingsfeedback</h1>
-  <button id="btnImport" title="Reps a Pausen aus engem Screenshot, Foto oder Trainingsplang (Bild/PDF) uleeën">Aus Bild / PDF</button>
+  <button id="btnImport" title="Reps a Pausen aus Foto, Screenshot, FIT/TCX/GPX, Strava oder Trainingsplang uleeën">Training importéieren</button>
   <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neit Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
   <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
@@ -298,12 +318,22 @@
     Alles gëtt automatesch am Browser zwëschegespäichert. „PDF fir den Trainer“ → am Drockdialog „Als PDF späicheren“ wielen; den Numm gëtt automatesch virgeschloen.</p>
 </div>
 
+<div id="dropAll">Foto oder Fichier hei lassgoen</div>
+
 <dialog id="imp" aria-labelledby="impTitle">
-  <h2 id="impTitle">Reps a Pausen aus Bild oder PDF</h2>
-  <p class="hint">Screenshot vun der Auer-App (Runden), Foto vum Auer-Display oder Trainingsplang als Bild/PDF.
+  <h2 id="impTitle">Training importéieren</h2>
+  <p class="hint">Am beschten: Aktivitéit als <b>FIT</b>, TCX oder GPX exportéieren (Garmin, Coros, Strava) – dat ass exakt.
+    Soss: Screenshot vun der Auer-App (Runden), Foto vum Auer-Display oder Trainingsplang als Bild/PDF.
     D'Erkennung leeft hei um Apparat; d'Bild gëtt net eropgelueden. Ëmmer kontrolléieren, ier een iwwerhëlt.</p>
-  <div class="row">
-    <input type="file" id="impFile" accept="image/*,application/pdf" style="width:auto">
+  <label id="drop" for="impFile">
+    <b>Foto oder Fichier heihinner zéien</b>
+    <span>oder klicken fir ze wielen · Screenshot mat Cmd/Ctrl+V apechen</span>
+    <input type="file" id="impFile" accept="image/*,application/pdf,.fit,.tcx,.gpx,.zip">
+  </label>
+  <div id="stravaBox" hidden>
+    <button id="stravaBtn">Vu Strava lueden</button>
+    <button id="stravaOff" hidden>Strava trennen</button>
+    <div id="stravaList"></div>
   </div>
   <div id="impStatus" role="status"></div>
   <div class="row" id="impModeRow">
@@ -317,6 +347,9 @@
     <textarea id="impText" spellcheck="false" placeholder="z.B. 4km&#10;12x600m (45s)&#10;2km"></textarea>
     <div class="row"><button id="impReparse">Nei auswäerten</button></div>
   </details>
+  <div class="row" id="impRoundRow" hidden>
+    <label><input type="checkbox" id="impRound" style="width:auto"> GPS-Distanz vun de Reps op déi ronn Distanz setzen (Piste: 1612 m → 1600 m)</label>
+  </div>
   <div id="impPrevWrap" hidden>
     <table id="impPrev">
       <thead><tr><th style="width:90px">Typ</th><th>Dist.</th><th>Zäit</th><th>HR</th><th style="text-align:left">Kommentar</th></tr></thead>
@@ -762,6 +795,12 @@
       if (!isFinite(d) && isFinite(pace) && pace > 0) d = Math.round(t / pace * 1000);
       rows.push({ d: isFinite(d) ? d : NaN, t, timeStr: timeStr.replace('.', ','), hrs });
     });
+    const typed = classify(rows);
+    return rows.map((r, i) => E(typed[i], { dist: isFinite(r.d) ? fmtNum(r.d) : '', time: r.timeStr, hrs: r.hrs,
+      hr: r.hrs.length ? String(typed[i] === 'pause' ? Math.min(...r.hrs) : Math.max(...r.hrs)) : '' }));
+  }
+  // rows [{d (m), t (s)}] → 'rep' | 'pause' | 'skip'
+  function classify(rows) {
     // reps = the fast group: sort paces and cut at the first jump of more than 25 %
     const timed = rows.filter(r => r.d > 0 && r.t > 0);
     const paces = timed.map(r => r.t / r.d).sort((a, b) => a - b);
@@ -771,7 +810,7 @@
     // warm-up / cool-down: a "rep" at either end that is slower than the typical rep and has a different distance
     const repIdx = typed.map((t, i) => t === 'rep' ? i : -1).filter(i => i >= 0);
     if (repIdx.length >= 3) {
-      const med = a => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+      const med = a => { const b = [...a].sort((x, y) => x - y); return b[(b.length - 1) >> 1]; };
       const mD = med(repIdx.map(i => rows[i].d));
       const mP = med(repIdx.filter(i => Math.abs(rows[i].d - mD) / mD <= 0.2).map(i => rows[i].t / rows[i].d));
       const odd = i => rows[i].t / rows[i].d > mP && Math.abs(rows[i].d - mD) / mD > 0.2;
@@ -779,11 +818,167 @@
       while (repIdx.length > 2 && odd(repIdx[repIdx.length - 1])) typed[repIdx.pop()] = 'skip';
     }
     const first = typed.indexOf('rep'), last = typed.lastIndexOf('rep');
-    return rows.map((r, i) => {
-      const type = first < 0 ? 'rep' : (i < first || i > last) ? 'skip' : typed[i];
-      return E(type, { dist: isFinite(r.d) ? fmtNum(r.d) : '', time: r.timeStr, hrs: r.hrs,
-                       hr: r.hrs.length ? String(type === 'pause' ? Math.min(...r.hrs) : Math.max(...r.hrs)) : '' });
+    return typed.map((t, i) => first < 0 ? 'rep' : (i < first || i > last) ? 'skip' : t);
+  }
+
+  // ---------- activity files: FIT (Garmin, Coros, Strava original), TCX, GPX, Garmin ZIP ----------
+  const fmtCs = v => {                       // seconds → m:ss,cc (hundredths, like the watch)
+    const t = rnd(v, 100);
+    if (t >= 3600) return fmtHMS(t, true);
+    const m = Math.floor(t / 60), s = rnd(t - m * 60, 100);
+    return m + ':' + (s < 10 ? '0' : '') + dec(s, 2);
+  };
+  // laps [{d, t, hrAvg, hrMax, hrMin, kind}] (kind from the file: rep/pause/skip or '') → preview entries
+  function lapsToEntries(laps) {
+    const auto = classify(laps);
+    return laps.map((l, i) => {
+      const type = l.kind || auto[i];
+      const hrRep = l.hrMax ?? l.hrAvg, hrPause = l.hrMin ?? l.hrAvg;
+      const hr = type === 'pause' ? hrPause : hrRep;
+      return E(type, { dist: isFinite(l.d) ? fmtNum(Math.round(l.d * 10) / 10) : '', time: fmtCs(l.t),
+        hr: hr != null ? String(Math.round(hr)) : '', gps: l.d,
+        hrs: [hrRep, hrPause].filter(v => v != null).map(Math.round) });
     });
+  }
+  // HR min/max per lap from the record stream [{ts, hr}]
+  function hrRange(recs, from, to) {
+    let mn = null, mx = null;
+    for (const r of recs) if (r.ts >= from && r.ts <= to && r.hr > 0) { mn = mn == null ? r.hr : Math.min(mn, r.hr); mx = mx == null ? r.hr : Math.max(mx, r.hr); }
+    return { mn, mx };
+  }
+
+  // Minimal FIT decoder: reads lap (19) and record (20) messages
+  function parseFIT(buf) {
+    const dv = new DataView(buf), laps = [], recs = [];
+    let off = 0;
+    while (off + 12 <= buf.byteLength) {
+      const hs = dv.getUint8(off), size = dv.getUint32(off + 4, true);
+      if (String.fromCharCode(...new Uint8Array(buf, off + 8, 4)) !== '.FIT') { if (!laps.length) throw new Error('Keen FIT-Fichier.'); break; }
+      let p = off + hs; const end = p + size, defs = {}; let lastTs = 0;
+      const read = (q, sz, little) => sz === 1 ? dv.getUint8(q) : sz === 2 ? dv.getUint16(q, little) : sz === 4 ? dv.getUint32(q, little) : null;
+      const INVALID = { 1: 0xFF, 2: 0xFFFF, 4: 0xFFFFFFFF };
+      while (p < end) {
+        const h = dv.getUint8(p++);
+        if (!(h & 0x80) && (h & 0x40)) {                     // definition message
+          const local = h & 0x0F, dev = h & 0x20;
+          p++; const little = dv.getUint8(p++) === 0, g = dv.getUint16(p, little); p += 2;
+          const nf = dv.getUint8(p++), fields = [];
+          for (let i = 0; i < nf; i++, p += 3) fields.push({ n: dv.getUint8(p), sz: dv.getUint8(p + 1) });
+          let devSize = 0;
+          if (dev) { const nd = dv.getUint8(p++); for (let i = 0; i < nd; i++, p += 3) devSize += dv.getUint8(p + 1); }
+          defs[local] = { g, little, fields, devSize };
+          continue;
+        }
+        let local, ts = null;
+        if (h & 0x80) {                                      // compressed timestamp header
+          local = (h >> 5) & 3; const o = h & 0x1F;
+          ts = (lastTs & ~0x1F) + o; if (o < (lastTs & 0x1F)) ts += 0x20; lastTs = ts;
+        } else local = h & 0x0F;
+        const def = defs[local]; if (!def) throw new Error('FIT-Fichier ass beschiedegt.');
+        const v = {};
+        for (const fd of def.fields) {
+          const x = read(p, fd.sz, def.little);
+          if (x != null && x !== INVALID[fd.sz]) v[fd.n] = x;
+          p += fd.sz;
+        }
+        p += def.devSize;
+        if (v[253] != null) { lastTs = v[253]; ts = v[253]; }
+        if (def.g === 20 && v[3] != null && ts != null) recs.push({ ts, hr: v[3] });
+        if (def.g === 19) laps.push({ start: v[2], end: v[253] ?? ts, t: (v[8] ?? v[7]) / 1000, d: v[9] != null ? v[9] / 100 : NaN,
+                                      hrAvg: v[15], hrMax: v[16], hrMin: v[63], intensity: v[23] });
+      }
+      off = end + 2;                                         // skip CRC, next chained FIT file
+    }
+    if (!laps.length) throw new Error('Am FIT-Fichier si keng Runden.');
+    // intensity from structured workouts: 0 active, 1 rest, 2 warm-up, 3 cool-down, 4 recovery
+    const useInt = laps.some(l => l.intensity === 1 || l.intensity === 4) && laps.some(l => l.intensity === 0 || l.intensity == null);
+    return laps.map(l => {
+      if (recs.length && l.start != null && l.end != null) {
+        const r = hrRange(recs, l.start, l.end);
+        if (l.hrMin == null) l.hrMin = r.mn;
+        if (l.hrMax == null) l.hrMax = r.mx;
+      }
+      l.kind = !useInt ? '' : l.intensity === 1 || l.intensity === 4 ? 'pause' : l.intensity === 2 || l.intensity === 3 ? 'skip' : 'rep';
+      return l;
+    });
+  }
+
+  function parseTCX(xml) {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const kids = (el, name) => [...el.getElementsByTagName('*')].filter(e => e.localName === name);
+    const val = (el, name) => { const e = kids(el, name)[0]; return e ? Number(e.textContent) : null; };
+    const laps = kids(doc, 'Lap').map(lap => {
+      const hrs = kids(lap, 'HeartRateBpm').map(h => val(h, 'Value')).filter(v => v > 0);
+      const avg = kids(lap, 'AverageHeartRateBpm')[0], max = kids(lap, 'MaximumHeartRateBpm')[0];
+      const int = (kids(lap, 'Intensity')[0] || {}).textContent;
+      return { t: val(lap, 'TotalTimeSeconds'), d: val(lap, 'DistanceMeters') ?? NaN,
+               hrAvg: avg ? val(avg, 'Value') : undefined, hrMax: max ? val(max, 'Value') : hrs.length ? Math.max(...hrs) : undefined,
+               hrMin: hrs.length ? Math.min(...hrs) : undefined, kind: int === 'Resting' ? 'pause' : '' };
+    });
+    if (!laps.length) throw new Error('Am TCX-Fichier si keng Runden.');
+    if (!laps.some(l => l.kind === 'pause')) laps.forEach(l => l.kind = '');
+    return laps;
+  }
+
+  // GPX has no laps → 1 km splits from the track (HR from Garmin/Strava extensions)
+  function parseGPX(xml) {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const pts = [...doc.getElementsByTagName('*')].filter(e => e.localName === 'trkpt').map(e => {
+      const time = [...e.children].find(c => c.localName === 'time');
+      const hr = [...e.getElementsByTagName('*')].find(c => c.localName === 'hr');
+      return { lat: +e.getAttribute('lat'), lon: +e.getAttribute('lon'), ts: time ? Date.parse(time.textContent) / 1000 : NaN, hr: hr ? +hr.textContent : null };
+    }).filter(q => isFinite(q.ts));
+    if (pts.length < 2) throw new Error('Am GPX-Fichier ass keng Streck mat Zäiten.');
+    const R = 6371008.8, rad = x => x * Math.PI / 180;
+    const dist = (a, b) => { const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+    const laps = []; let cum = 0, mark = 1000, t0 = pts[0].ts, hrs = [];
+    for (let i = 1; i < pts.length; i++) {
+      const seg = dist(pts[i - 1], pts[i]);
+      if (pts[i].hr) hrs.push(pts[i].hr);
+      while (seg > 0 && cum + seg >= mark) {                 // interpolate the moment the km mark is crossed
+        const ts = pts[i - 1].ts + (pts[i].ts - pts[i - 1].ts) * (mark - cum) / seg;
+        laps.push({ d: 1000, t: ts - t0, hrMax: hrs.length ? Math.max(...hrs) : undefined, hrMin: hrs.length ? Math.min(...hrs) : undefined, kind: 'rep' });
+        t0 = ts; mark += 1000; hrs = [];
+      }
+      cum += seg;
+    }
+    const restD = cum - (mark - 1000);
+    if (restD > 1) laps.push({ d: restD, t: pts[pts.length - 1].ts - t0, hrMax: hrs.length ? Math.max(...hrs) : undefined, hrMin: hrs.length ? Math.min(...hrs) : undefined, kind: 'rep' });
+    return laps;
+  }
+
+  // Garmin Connect "Export Original" = ZIP with one .fit inside
+  async function unzipFirst(buf, re) {
+    const dv = new DataView(buf);
+    let e = buf.byteLength - 22;
+    while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error('ZIP-Fichier konnt net gelies ginn.');
+    let p = dv.getUint32(e + 16, true);
+    const n = dv.getUint16(e + 10, true);
+    for (let i = 0; i < n; i++) {
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+      const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+      const lho = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(new Uint8Array(buf, p + 46, nl));
+      p += 46 + nl + xl + cl;
+      if (!re.test(name)) continue;
+      const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+      const data = new Uint8Array(buf, start, csize);
+      if (method === 0) return { name, buf: data.slice().buffer };
+      const out = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return { name, buf: await new Response(out).arrayBuffer() };
+    }
+    throw new Error('Am ZIP ass keen FIT/TCX/GPX-Fichier.');
+  }
+
+  async function parseActivity(file) {
+    let name = file.name.toLowerCase(), buf = await file.arrayBuffer();
+    if (name.endsWith('.zip')) ({ name, buf } = await unzipFirst(buf, /\.(fit|tcx|gpx)$/i)), name = name.toLowerCase();
+    if (name.endsWith('.fit')) return parseFIT(buf);
+    const txt = new TextDecoder().decode(buf);
+    if (name.endsWith('.tcx')) return parseTCX(txt);
+    return parseGPX(txt);
   }
 
   // ---------- entries → sheet ----------
@@ -868,6 +1063,15 @@
     status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps. W.e.gl. kontrolléieren.`);
     renderPreview();
   }
+  // track reps: GPS distance → nearest 100 m when within 5 % (1612 m → 1600 m)
+  $('impRound').onchange = e => {
+    entries.forEach(en => {
+      if (en.type !== 'rep' || !isFinite(en.gps)) return;
+      const r = Math.round(en.gps / 100) * 100;
+      en.dist = fmtNum(e.target.checked && r > 0 && Math.abs(r - en.gps) / en.gps < 0.05 ? r : Math.round(en.gps * 10) / 10);
+    });
+    renderPreview();
+  };
   $('impDays').addEventListener('click', e => { if (e.target.dataset.d !== undefined) pickDay(+e.target.dataset.d); });
   document.querySelectorAll('input[name=impMode]').forEach(r => r.onchange = evaluate);
   $('impReparse').onclick = evaluate;
@@ -878,7 +1082,8 @@
   };
   $('btnImport').onclick = () => {
     entries = []; renderPreview(); status(''); $('impDays').innerHTML = '';
-    $('impFile').value = '';
+    $('impRoundRow').hidden = true; $('impRound').checked = false;
+    $('impFile').value = ''; stravaUi();
     dlg.showModal();
   };
 
@@ -931,6 +1136,18 @@
   async function importFile(file) {
     try {
       $('impApply').disabled = true;
+      $('impRoundRow').hidden = true; $('impRound').checked = false;
+      if (/\.(fit|tcx|gpx|zip)$/i.test(file.name)) {
+        status('Aktivitéit gëtt gelies …');
+        entries = lapsToEntries(await parseActivity(file));
+        $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
+        $('impRoundRow').hidden = false;
+        if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
+        const n = entries.filter(x => x.type === 'rep').length;
+        status(`${entries.length} Runden aus der Aktivitéit, dovun ${n} Reps. W.e.gl. kontrolléieren.`);
+        renderPreview();
+        return;
+      }
       let text;
       if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) text = await pdfText(file);
       else { const url = URL.createObjectURL(file); try { text = await ocr(await prepImage(url)); } finally { URL.revokeObjectURL(url); } }
@@ -940,7 +1157,114 @@
     } catch (err) { status(err.message || String(err), true); }
   }
   $('impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); };
-  window.lafenImport = { importFile, parsePlan, parseLaps, evaluate };   // for testing
+  // drag & drop anywhere on the page (or onto the drop zone) and paste (Cmd/Ctrl+V) of a screenshot
+  const openWith = f => { if (!dlg.open) $('btnImport').onclick(); importFile(f); };
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; document.body.classList.add('dragging'); } });
+  document.addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+  document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+    const f = e.dataTransfer.files[0]; if (f) openWith(f);
+  });
+  document.addEventListener('paste', e => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file');
+    if (!item) return;                                   // normal text paste stays untouched
+    e.preventDefault();
+    const f = item.getAsFile();
+    openWith(new File([f], f.name && f.name !== 'image.png' ? f.name : 'screenshot.png', { type: f.type }));
+  });
+
+  // ================= Strava (OAuth via a small Cloudflare Worker that keeps the client secret) =================
+  const STRAVA = { clientId: '', worker: '' };   // filled in after the Strava app + worker are set up
+  const SKEY = 'lafen-strava';
+  const sGet = () => { try { return JSON.parse(localStorage.getItem(SKEY)) || null; } catch { return null; } };
+  const sSet = v => { try { v ? localStorage.setItem(SKEY, JSON.stringify(v)) : localStorage.removeItem(SKEY); } catch {} };
+  const stravaOn = !!(STRAVA.clientId && STRAVA.worker);
+  const redirectUri = location.origin + location.pathname;
+  async function tokenCall(body) {
+    const r = await fetch(STRAVA.worker + '/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .catch(() => { throw new Error('Keng Verbindung mam Strava-Server (Internet?).'); });
+    const j = await r.json();
+    if (!r.ok || !j.access_token) throw new Error('Strava-Login huet net geklappt' + (j.message ? ': ' + j.message : '.'));
+    sSet({ access: j.access_token, refresh: j.refresh_token, exp: j.expires_at });
+    return j.access_token;
+  }
+  async function stravaToken() {
+    const t = sGet(); if (!t) return null;
+    if (t.exp * 1000 > Date.now() + 60000) return t.access;
+    return tokenCall({ refresh_token: t.refresh });
+  }
+  async function stravaApi(path) {
+    const tok = await stravaToken();
+    if (!tok) throw new Error('Net mat Strava verbonnen.');
+    const r = await fetch(STRAVA.worker + '/api/' + path, { headers: { Authorization: 'Bearer ' + tok } })
+      .catch(() => { throw new Error('Keng Verbindung mam Strava-Server (Internet?).'); });
+    if (r.status === 401) { sSet(null); throw new Error('Strava-Verbindung ofgelaf. W.e.gl. nei verbannen.'); }
+    if (r.status === 429) throw new Error('Strava-Limit erreecht. W.e.gl. an e puer Minutten nach eng Kéier.');
+    if (!r.ok) throw new Error('Strava-Feeler ' + r.status);
+    return r.json();
+  }
+  function stravaLogin() {
+    location.href = 'https://www.strava.com/oauth/authorize?' + new URLSearchParams({
+      client_id: STRAVA.clientId, redirect_uri: redirectUri, response_type: 'code',
+      approval_prompt: 'auto', scope: 'activity:read_all', state: 'lafen'
+    });
+  }
+  async function stravaList() {
+    status('Aktivitéite vu Strava ginn gelueden …');
+    const acts = (await stravaApi('athlete/activities?per_page=15')).filter(a => /run/i.test(a.sport_type || a.type));
+    $('stravaList').innerHTML = acts.map(a => `<button data-a="${a.id}"><span>${a.name.replace(/</g, '&lt;')}</span>
+      <small>${new Date(a.start_date_local).toLocaleDateString('de-LU')} · ${dec(a.distance / 1000, 2)} km · ${fmtHMS(a.elapsed_time)}</small></button>`).join('')
+      || '<small>Keng Laf-Aktivitéiten fonnt.</small>';
+    status('Aktivitéit auswielen.');
+  }
+  async function stravaLoad(id) {
+    status('Runde vu Strava ginn gelueden …');
+    const [laps, streams] = await Promise.all([
+      stravaApi(`activities/${id}/laps`),
+      stravaApi(`activities/${id}/streams?keys=heartrate,time&key_by_type=true`).catch(() => ({}))
+    ]);
+    const hr = streams.heartrate?.data || [];
+    const list = laps.map(l => {
+      const seg = hr.slice(l.start_index, l.end_index + 1).filter(v => v > 0);
+      return { d: l.distance, t: l.elapsed_time, hrAvg: l.average_heartrate, hrMax: l.max_heartrate ?? (seg.length ? Math.max(...seg) : undefined),
+               hrMin: seg.length ? Math.min(...seg) : undefined, kind: '' };
+    });
+    if (!list.length) throw new Error('Dës Aktivitéit huet keng Runden.');
+    entries = lapsToEntries(list);
+    $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
+    $('impRoundRow').hidden = false; $('impRound').checked = false;
+    if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
+    status(`${entries.length} Runden vu Strava, dovun ${entries.filter(x => x.type === 'rep').length} Reps. Strava gëtt Zäite just op d'Sekonn. W.e.gl. kontrolléieren.`);
+    renderPreview();
+  }
+  function stravaUi() {
+    $('stravaBox').hidden = !stravaOn;
+    const on = !!sGet();
+    $('stravaBtn').textContent = on ? 'Lescht Strava-Aktivitéiten weisen' : 'Mat Strava verbannen';
+    $('stravaOff').hidden = !on;
+  }
+  $('stravaBtn').onclick = () => (sGet() ? stravaList() : stravaLogin()).catch(err => status(err.message, true));
+  $('stravaOff').onclick = () => { sSet(null); $('stravaList').innerHTML = ''; stravaUi(); status('Strava getrennt.'); };
+  $('stravaList').addEventListener('click', e => {
+    const b = e.target.closest('button[data-a]');
+    if (b) stravaLoad(b.dataset.a).catch(err => status(err.message, true));
+  });
+  // back from Strava's login page: ?code=…&state=lafen
+  (async () => {
+    const q = new URLSearchParams(location.search);
+    if (!stravaOn || q.get('state') !== 'lafen') return;
+    history.replaceState(null, '', redirectUri);
+    $('btnImport').onclick(); stravaUi();
+    if (q.get('error') || !q.get('code')) { status('Strava-Login ofgebrach.', true); return; }
+    if (!(q.get('scope') || '').includes('activity:read')) { status('Ouni Zougrëff op d\'Aktivitéite geet et net. W.e.gl. nach eng Kéier verbannen an den Hoken setzen.', true); return; }
+    try { status('Mat Strava verbannen …'); await tokenCall({ code: q.get('code') }); stravaUi(); await stravaList(); }
+    catch (err) { status(err.message, true); }
+  })();
+  window.lafenImport = { importFile, parsePlan, parseLaps, parseFIT, evaluate };   // for testing
 
   fillMeta(); buildRows(); calc(); showTimes();
 })();
