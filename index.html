@@ -125,12 +125,44 @@
     .tablewrap { overflow: visible; }
   }
   .commentprint { display: none; }
+
+  /* Import dialog */
+  dialog#imp {
+    width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 18px 20px;
+    border: 1px solid #bbb; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  }
+  dialog#imp::backdrop { background: rgba(20,25,35,.45); }
+  #imp h2 { font-size: 17px; margin: 0 0 4px; }
+  #imp .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  #imp .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 10px 0; }
+  #imp .row label { display: inline-flex; gap: 5px; align-items: center; }
+  #imp .row input[type=radio] { width: auto; }
+  #impStatus { font-size: 13px; color: #2f6fd6; min-height: 18px; }
+  #impStatus.err { color: #c22; }
+  #impDays { display: flex; flex-wrap: wrap; gap: 6px; }
+  #impDays button { font-size: 13px; padding: 4px 10px; }
+  #impDays button.on { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
+  #impText { min-height: 110px; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  #imp details { margin: 10px 0; }
+  #imp summary { cursor: pointer; font-size: 13px; }
+  #impPrevWrap { overflow-x: auto; max-height: 45vh; overflow-y: auto; border: 1px solid #ddd; }
+  #impPrev { min-width: 560px; }
+  #impPrev th { position: sticky; top: 0; background: #f2f2f2; font-size: 12px; }
+  #impPrev td { height: 28px; }
+  #impPrev select { font: inherit; border: 0; background: transparent; width: 100%; padding: 3px; }
+  #impPrev tr.t-rep td:first-child { background: #e6f2e9; }
+  #impPrev tr.t-pause td:first-child { background: #fbf3d9; }
+  #impPrev tr.t-skip td { color: #999; }
+  #impPrev tr.t-skip input { color: #999; text-decoration: line-through; }
+  #imp .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .rowbtns select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; }
 </style>
 </head>
 <body>
 
 <div class="toolbar">
   <h1>Lafen · Trainingsfeedback</h1>
+  <button id="btnImport" title="Reps a Pausen aus engem Screenshot, Foto oder Trainingsplang (Bild/PDF) uleeën">Aus Bild / PDF</button>
   <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neit Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
   <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
@@ -228,8 +260,28 @@
   <div class="rowbtns">
     <button id="addRep">+ Rep</button>
     <button id="remRep">− Rep</button>
-    <button id="fromTraining" title="Liest z.B. „6x1000“ oder „3x2k“ aus dem Feld Training">Reps aus „Training“ uleeën</button>
+    <button id="fromTraining" title="Liest z.B. „6x1000 (60s)“ oder „4x(1600-1200) (60s)“ aus dem Feld Training">Reps aus „Training“ uleeën</button>
+    <select id="preset" title="Eng Strecke als eenzeg Rep uleeën">
+      <option value="">Strecke virwielen …</option>
+      <option value="400">400 m</option>
+      <option value="800">800 m</option>
+      <option value="1000">1000 m</option>
+      <option value="1500">1500 m</option>
+      <option value="1609.344">1 Meil</option>
+      <option value="3000">3000 m</option>
+      <option value="5000">5 km</option>
+      <option value="10000">10 km</option>
+      <option value="15000">15 km</option>
+      <option value="21097.5">Hallefmarathon</option>
+      <option value="30000">30 km</option>
+      <option value="42195">Marathon</option>
+    </select>
   </div>
+  <datalist id="distList">
+    <option value="200"><option value="400"><option value="600"><option value="800"><option value="1000">
+    <option value="1200"><option value="1600"><option value="2000"><option value="3000"><option value="5000">
+    <option value="10000"><option value="21097,5" label="Hallefmarathon"><option value="42195" label="Marathon">
+  </datalist>
 
   <div class="summary" id="summary"></div>
 
@@ -241,10 +293,41 @@
     </div>
   </div>
 
-  <p class="tip">Zäiten: „7:38,2“ oder „4:37,15“ (min:sek), „1:02:30“ (h:min:sek) oder „45“ (sek). Distanz: „1600“, „1600m“, „1,6k“.
+  <p class="tip">Zäiten: „7:38,2“ oder „4:37,15“ (min:sek), „1:02:30“ (h:min:sek) oder „45“ (sek). Distanz: „1600“, „1600m“, „1,6k“, „HM“, „Marathon“.
     D'Faarwen funktionéieren wéi am Excel: 3-Faarwen-Skala (Min · Median · Max) iwwer d'Kolonn inkl. MIN/MAX-Referenz.
     Alles gëtt automatesch am Browser zwëschegespäichert. „PDF fir den Trainer“ → am Drockdialog „Als PDF späicheren“ wielen; den Numm gëtt automatesch virgeschloen.</p>
 </div>
+
+<dialog id="imp" aria-labelledby="impTitle">
+  <h2 id="impTitle">Reps a Pausen aus Bild oder PDF</h2>
+  <p class="hint">Screenshot vun der Auer-App (Runden), Foto vum Auer-Display oder Trainingsplang als Bild/PDF.
+    D'Erkennung leeft hei um Apparat; d'Bild gëtt net eropgelueden. Ëmmer kontrolléieren, ier een iwwerhëlt.</p>
+  <div class="row">
+    <input type="file" id="impFile" accept="image/*,application/pdf" style="width:auto">
+  </div>
+  <div id="impStatus" role="status"></div>
+  <div class="row" id="impModeRow">
+    <b>Wat ass et?</b>
+    <label><input type="radio" name="impMode" value="laps" checked> Runden vun der Auer (Resultater)</label>
+    <label><input type="radio" name="impMode" value="plan"> Trainingsplang (Reps virbereeden)</label>
+  </div>
+  <div id="impDays"></div>
+  <details id="impTextBox">
+    <summary>Erkannten Text weisen / verbesseren (oder Text hei apechen)</summary>
+    <textarea id="impText" spellcheck="false" placeholder="z.B. 4km&#10;12x600m (45s)&#10;2km"></textarea>
+    <div class="row"><button id="impReparse">Nei auswäerten</button></div>
+  </details>
+  <div id="impPrevWrap" hidden>
+    <table id="impPrev">
+      <thead><tr><th style="width:90px">Typ</th><th>Dist.</th><th>Zäit</th><th>HR</th><th style="text-align:left">Kommentar</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="actions">
+    <button id="impCancel">Ofbriechen</button>
+    <button id="impApply" class="primary" disabled>Iwwerhuelen</button>
+  </div>
+</dialog>
 
 <script>
 (() => {
@@ -279,9 +362,12 @@
     return p.reduce((a, x) => a * 60 + Number(x), 0);
   };
   // distance → metres
+  const NAMED = { hm: 21097.5, hallefmarathon: 21097.5, halbmarathon: 21097.5, halfmarathon: 21097.5,
+                  semimarathon: 21097.5, marathon: 42195, meil: 1609.344, mile: 1609.344 };
   const metres = s => {
     s = String(s ?? '').trim().toLowerCase().replace(',', '.').replace(/\s/g, '');
     if (!s) return NaN;
+    if (NAMED[s.replace(/^1/, '')]) return NAMED[s.replace(/^1/, '')];
     const m = s.match(/^(\d*\.?\d+)(km|k|m)?$/);
     if (!m) return NaN;
     return Number(m[1]) * (m[2] === 'k' || m[2] === 'km' ? 1000 : 1);
@@ -335,7 +421,7 @@
     rowsEl.innerHTML = S.reps.map((r, i) => `
       <tr class="rep" data-i="${i}">
         <td>${i + 1}</td>
-        <td class="in"><input data-r="${i}" data-f="dist" class="num" inputmode="decimal"></td>
+        <td class="in"><input data-r="${i}" data-f="dist" class="num" inputmode="decimal" list="distList"></td>
         <td class="in"><input data-r="${i}" data-f="time" class="num tm" inputmode="decimal"></td>
         <td class="out" data-o="pace"></td>
         <td class="in cs" data-c="hr"><input data-r="${i}" data-f="hr" class="num" inputmode="numeric"></td>
@@ -484,13 +570,21 @@
 
   $('addRep').onclick = () => { S.reps.push(blankRep()); buildRows(); calc(); showTimes(); };
   $('remRep').onclick = () => { if (S.reps.length > 1) { S.reps.pop(); buildRows(); calc(); showTimes(); } };
+  const hasData = () => S.reps.some(r => r.time || r.hr || r.pTime || r.pHr || r.lac);
   $('fromTraining').onclick = () => {
-    const m = String(S.training).toLowerCase().replace(',', '.').match(/(\d+)\s*[x×]\s*(\d*\.?\d+\s*(?:km|k|m)?)/);
-    if (!m) { alert('Am Feld „Training“ keen Muster wéi „6x1000“ fonnt.'); return; }
-    const n = Number(m[1]), d = metres(m[2]);
-    if (S.reps.some(r => r.time || r.hr) && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    S.reps = Array.from({length:n}, () => Object.assign(blankRep(), {dist: isFinite(d) ? String(d) : ''}));
-    buildRows(); calc(); showTimes();
+    const res = parsePlan(S.training);
+    if (!res.entries.some(e => e.type === 'rep')) { alert('Am Feld „Training“ keen Muster wéi „6x1000 (60s)“ fonnt.'); return; }
+    if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
+    applyEntries(res.entries, null);
+  };
+  $('preset').onchange = e => {
+    const v = e.target.value, label = e.target.selectedOptions[0].textContent;
+    e.target.value = '';
+    if (!v) return;
+    if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
+    S.reps = [Object.assign(blankRep(), { dist: v.replace('.', ',') })];
+    if (!S.training) S.training = label;
+    fillMeta(); buildRows(); calc(); showTimes();
   };
 
   $('btnNew').onclick = () => {
@@ -520,6 +614,329 @@
     window.print();
     setTimeout(() => document.title = old, 500);
   };
+
+
+  // ================= Import from screenshot / photo / plan (image or PDF) =================
+  const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const loaded = {};
+  const loadScript = src => loaded[src] ??= new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = src; el.onload = res;
+    el.onerror = () => { delete loaded[src]; rej(new Error('Konnt ' + src + ' net lueden (Internet?)')); };
+    document.head.appendChild(el);
+  });
+
+  const dlg = $('imp');
+  let entries = [], dayBlocks = [];
+  const status = (msg, err = false) => { $('impStatus').textContent = msg; $('impStatus').classList.toggle('err', err); };
+  const fmtNum = v => String(Math.round(v * 1000) / 1000).replace('.', ',');
+
+  // duration token → seconds: "45s", "90 sec", "3min", "3'", "1'30", "1:30", "2:01,2"
+  const parseDur = t => {
+    t = String(t).trim().toLowerCase().replace(/\s+/g, '').replace(/[’`]/g, "'");
+    let m;
+    if ((m = t.match(/^(\d+(?:[.,]\d+)?)(s|sec|sek|''|")$/))) return num(m[1]);
+    if ((m = t.match(/^(\d+(?:[.,]\d+)?)(min|mn|')$/))) return num(m[1]) * 60;
+    if ((m = t.match(/^(\d+)'(\d{1,2})(?:''|")?$/))) return +m[1] * 60 + +m[2];
+    if ((m = t.match(/^(\d+)h(\d{1,2})?$/))) return +m[1] * 3600 + (+m[2] || 0) * 60;
+    if (/^\d+:\d{2}(:\d{2})?([.,]\d+)?$/.test(t)) return secs(t);
+    return NaN;
+  };
+  // distance token in a plan → metres ("600m", "3km", "5k", "1600" (bare ≥ 100 = m), "3" (bare < 50 = km), "HM")
+  const parseDistTok = t => {
+    t = String(t).trim().toLowerCase().replace(/\s+/g, '');
+    const n = metres(t);
+    if (isFinite(n) && /[a-z]/.test(t)) return n;
+    if (/^\d+(?:[.,]\d+)?$/.test(t)) { const v = num(t); return v >= 100 ? v : v < 50 ? v * 1000 : NaN; }
+    return NaN;
+  };
+  const tokItem = t => {
+    const d = parseDur(t); if (isFinite(d)) return { time: d };
+    const m = parseDistTok(t); if (isFinite(m)) return { dist: m };
+    return null;
+  };
+  const E = (type, o = {}) => Object.assign({ type, dist: '', time: '', hr: '', note: '', hrs: [] }, o);
+
+  // ---------- plan text → entries ----------
+  const DAY = /^(m[eé]i?nd|d[eë]nschd|m[eë]tt?woch|donnesch|freid|sam?sch?d|sonnd|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|monday|tuesday|wednesday|thursday|friday|saturday|sunday|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i;
+  const WARM = /laa?f|lauf|warm|cool|easy|locker|einl|ausl|recup|r[ée]cup|jog/i;
+  function splitDays(text) {
+    const blocks = []; let cur = null;
+    text.split(/\n/).forEach(raw => {
+      const l = raw.trim(); if (!l) return;
+      const d = l.match(new RegExp(DAY.source + '\\S*', 'i'));
+      if (d) {                                   // "Mettwochs 4km" → day "Mettwochs", line "4km"
+        const rest = l.slice(d[0].length).trim();
+        cur = { day: d[0], lines: rest ? [rest] : [] }; blocks.push(cur);
+      }
+      else if (cur) cur.lines.push(l);
+    });
+    return blocks.filter(b => b.lines.length);
+  }
+  function parsePlan(text) {
+    const out = [], plain = [], used = [];
+    const lines = String(text).split(/\n|;/).map(l => l.replace(/^[\s•\-–*·]+/, '').trim()).filter(Boolean);
+    const lastRep = () => { for (let i = out.length - 1; i >= 0; i--) if (out[i].type === 'rep') return i; return -1; };
+    const addPause = sec => {
+      const i = lastRep(); if (i < 0) return;
+      const next = out[i + 1];
+      if (next && next.type === 'pause') { if (!next.time) next.time = fmtMS(sec); }
+      else out.splice(i + 1, 0, E('pause', { time: fmtMS(sec) }));
+    };
+    for (const raw of lines) {
+      const l = raw.toLowerCase().replace(/×/g, 'x');
+      let m = l.match(/^(\d+)\s*x\s*(.+)$/);
+      if (m) {
+        const n = +m[1]; let rest = m[2].trim(), items;
+        if (rest.startsWith('(')) {
+          const j = rest.indexOf(')'); if (j < 0) continue;
+          items = rest.slice(1, j).split(/\s*[-–\/+,]\s*/); rest = rest.slice(j + 1);
+        } else {
+          const t = rest.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)/);
+          if (!t) continue;
+          items = [t[1]]; rest = rest.slice(t[0].length);
+        }
+        const its = items.map(tokItem);
+        if (!its.length || its.some(x => !x) || n < 1 || n > 60) continue;
+        let pause = NaN;
+        rest = rest.replace(/\(([^)]*)\)/g, (a, b) => { const d = parseDur(b); if (isFinite(d)) { pause = d; return ' '; } return a; });
+        const note = rest.replace(/\s+/g, ' ').trim();
+        for (let k = 0; k < n; k++) its.forEach((it, idx) => {
+          out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
+          const isLast = k === n - 1 && idx === its.length - 1;
+          if (!isLast) out.push(E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
+        });
+        used.push(raw);
+        continue;
+      }
+      m = l.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)(?=[\s(]|$)\s*(.*)$/);
+      if (!m) continue;
+      const it = tokItem(m[1]); if (!it) continue;
+      const note = m[2].replace(/\s+/g, ' ').trim();
+      if (it.time && !note) { addPause(it.time); continue; }
+      // warm-up / cool-down / easy running is not a rep ("4km", "2km auslaaf", "3km easy")
+      if (it.dist && (!note || WARM.test(note))) { plain.push(it.dist); continue; }
+      out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
+      used.push(raw);
+    }
+    // no structured reps: a lone distance (e.g. "14km" long run) becomes one rep
+    if (!out.some(e => e.type === 'rep') && plain.length) {
+      const d = Math.max(...plain);
+      out.push(E('rep', { dist: fmtNum(d) })); used.push(fmtNum(d / 1000) + 'km');
+    }
+    return { entries: out, summary: used.join(' + ') };
+  }
+
+  // ---------- lap list (watch app / display) text → entries ----------
+  const SUMMARY = /^\s*(summary|total|totals|gesamt|zusammenfassung|r[ée]sum[ée]|totaal|insgesamt)\b/i;
+  function parseLaps(text) {
+    const rows = [];
+    text.split(/\n/).forEach(line => {
+      if (SUMMARY.test(line)) return;                       // totals row of the lap table
+      let l = ' ' + line.replace(/[|]/g, ' ').replace(/\s+/g, ' ') + ' ';
+      // OCR often drops the colon: "757.3" → "7:57.3", "2750.6" → "27:50.6"
+      l = l.replace(/(?<![\d:.,])(\d{1,2})([0-5]\d)([.,]\d)(?![\d])/g, '$1:$2$3');
+      const durs = [], paces = [];
+      l = l.replace(/(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d{1,2})?)(\s*[\/\[(|l1]\s*k?k?m\b|\s*\/\s*mi\b)?/gi, (a, t, p) => {
+        (p ? paces : durs).push(t); return ' ';
+      });
+      if (!durs.length) return;
+      let d = NaN;
+      l = l.replace(/(\d+(?:[.,]\d+)?)\s*(km|m)(?![a-z])/i, (a, v, u) => { d = num(v) * (u.toLowerCase() === 'km' ? 1000 : 1); return ' '; });
+      if (!isFinite(d)) l = l.replace(/(?<![\d:])(\d{1,2}[.,]\d{2,3})(?![\d:])/, (a, v) => { d = num(v) * 1000; return ' '; });
+      const hrs = (l.match(/(?<![\d.,:])\d{2,3}(?![\d.,:])/g) || []).map(Number).filter(v => v >= 60 && v <= 230);
+      // lap time = the duration that fits distance × pace (skips "cumulative time" columns)
+      let timeStr = durs[0];
+      const pace = paces.length ? secs(paces[0]) : NaN;
+      if (isFinite(d) && isFinite(pace) && durs.length > 1) {
+        const exp = d / 1000 * pace;
+        timeStr = durs.reduce((a, b) => Math.abs(secs(b) - exp) < Math.abs(secs(a) - exp) ? b : a);
+      }
+      const t = secs(timeStr);
+      if (!isFinite(d) && isFinite(pace) && pace > 0) d = Math.round(t / pace * 1000);
+      rows.push({ d: isFinite(d) ? d : NaN, t, timeStr: timeStr.replace('.', ','), hrs });
+    });
+    // reps = the fast group: sort paces and cut at the first jump of more than 25 %
+    const timed = rows.filter(r => r.d > 0 && r.t > 0);
+    const paces = timed.map(r => r.t / r.d).sort((a, b) => a - b);
+    let thr = Infinity;
+    for (let i = 1; i < paces.length; i++) if (paces[i] / paces[i - 1] > 1.25) { thr = (paces[i] + paces[i - 1]) / 2; break; }
+    const typed = rows.map(r => r.d > 0 && r.t / r.d <= thr ? 'rep' : 'pause');
+    // warm-up / cool-down: a "rep" at either end that is slower than the typical rep and has a different distance
+    const repIdx = typed.map((t, i) => t === 'rep' ? i : -1).filter(i => i >= 0);
+    if (repIdx.length >= 3) {
+      const med = a => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+      const mD = med(repIdx.map(i => rows[i].d));
+      const mP = med(repIdx.filter(i => Math.abs(rows[i].d - mD) / mD <= 0.2).map(i => rows[i].t / rows[i].d));
+      const odd = i => rows[i].t / rows[i].d > mP && Math.abs(rows[i].d - mD) / mD > 0.2;
+      while (repIdx.length > 2 && odd(repIdx[0])) typed[repIdx.shift()] = 'skip';
+      while (repIdx.length > 2 && odd(repIdx[repIdx.length - 1])) typed[repIdx.pop()] = 'skip';
+    }
+    const first = typed.indexOf('rep'), last = typed.lastIndexOf('rep');
+    return rows.map((r, i) => {
+      const type = first < 0 ? 'rep' : (i < first || i > last) ? 'skip' : typed[i];
+      return E(type, { dist: isFinite(r.d) ? fmtNum(r.d) : '', time: r.timeStr, hrs: r.hrs,
+                       hr: r.hrs.length ? String(type === 'pause' ? Math.min(...r.hrs) : Math.max(...r.hrs)) : '' });
+    });
+  }
+
+  // ---------- entries → sheet ----------
+  function applyEntries(list, training) {
+    const reps = [];
+    list.forEach(e => {
+      if (e.type === 'rep') reps.push(Object.assign(blankRep(), { dist: e.dist, time: e.time, hr: e.hr, note: e.note }));
+      else if (e.type === 'pause' && reps.length) {
+        const r = reps[reps.length - 1];
+        if (r.pTime || r.pHr) {          // two pauses in a row → one pause: times add up, lowest HR
+          const a = secs(r.pTime), b = secs(e.time);
+          if (isFinite(b)) r.pTime = fmtMS((isFinite(a) ? a : 0) + b);
+          if (e.hr && (!r.pHr || +e.hr < +r.pHr)) r.pHr = e.hr;
+        } else Object.assign(r, { pTime: e.time, pHr: e.hr, pNote: e.note });
+      }
+    });
+    if (!reps.length) return false;
+    S.reps = reps;
+    if (training && !S.training) S.training = training;
+    fillMeta(); buildRows(); calc(); showTimes();
+    return true;
+  }
+
+  // ---------- dialog ----------
+  const mode = () => document.querySelector('input[name=impMode]:checked').value;
+  const setMode = m => document.querySelector(`input[name=impMode][value=${m}]`).checked = true;
+  let planSummary = '';
+  function renderPreview() {
+    const tb = $('impPrev').tBodies[0];
+    tb.innerHTML = entries.map((e, i) => `
+      <tr class="t-${e.type}" data-i="${i}">
+        <td><select data-p="type">
+          <option value="rep"${e.type === 'rep' ? ' selected' : ''}>Rep</option>
+          <option value="pause"${e.type === 'pause' ? ' selected' : ''}>Paus</option>
+          <option value="skip"${e.type === 'skip' ? ' selected' : ''}>– ignoréieren</option></select></td>
+        <td class="in"><input data-p="dist" class="num"></td>
+        <td class="in"><input data-p="time" class="num"></td>
+        <td class="in"><input data-p="hr" class="num" inputmode="numeric"></td>
+        <td><input data-p="note"></td>
+      </tr>`).join('');
+    tb.querySelectorAll('input[data-p]').forEach(el => el.value = entries[el.closest('tr').dataset.i][el.dataset.p]);
+    $('impPrevWrap').hidden = !entries.length;
+    const n = entries.filter(e => e.type === 'rep').length;
+    $('impApply').disabled = !n;
+    $('impApply').textContent = n ? `${n} Rep${n > 1 ? 's' : ''} iwwerhuelen` : 'Iwwerhuelen';
+  }
+  $('impPrev').addEventListener('input', e => {
+    const tr = e.target.closest('tr'), ent = entries[tr.dataset.i], p = e.target.dataset.p;
+    if (p !== 'type') { ent[p] = e.target.value; return; }
+    ent.type = e.target.value; tr.className = 't-' + ent.type;
+    if (ent.hrs.length) { ent.hr = String(ent.type === 'pause' ? Math.min(...ent.hrs) : Math.max(...ent.hrs)); tr.querySelector('[data-p=hr]').value = ent.hr; }
+    renderPreview();
+  });
+  function evaluate() {
+    const text = $('impText').value;
+    $('impDays').innerHTML = '';
+    if (mode() === 'plan') {
+      dayBlocks = splitDays(text);
+      if (dayBlocks.length > 1) {
+        $('impDays').innerHTML = '<b style="align-self:center">Dag:</b>' + dayBlocks.map((b, i) => {
+          const r = parsePlan(b.lines.join('\n'));
+          return `<button data-d="${i}" title="${b.lines.join(' · ').replace(/"/g, '&quot;')}">${b.day}${r.entries.some(e => e.type === 'rep') ? '' : ' (–)'}</button>`;
+        }).join('');
+        // preselect the block with the most reps
+        let best = 0, bestN = -1;
+        dayBlocks.forEach((b, i) => { const n = parsePlan(b.lines.join('\n')).entries.filter(e => e.type === 'rep').length; if (n > bestN) { bestN = n; best = i; } });
+        pickDay(best);
+        return;
+      }
+      const r = parsePlan(text); entries = r.entries; planSummary = r.summary;
+      status(entries.length ? 'Plang gelies. W.e.gl. kontrolléieren.' : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
+    } else {
+      entries = parseLaps(text); planSummary = '';
+      status(entries.length ? `${entries.length} Runde fonnt. Typ (Rep/Paus) a Wäerter w.e.gl. kontrolléieren.` : 'Keng Runde mat Zäiten fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
+    }
+    renderPreview();
+  }
+  function pickDay(i) {
+    $('impDays').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
+    const r = parsePlan(dayBlocks[i].lines.join('\n'));
+    entries = r.entries; planSummary = r.summary;
+    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps. W.e.gl. kontrolléieren.`);
+    renderPreview();
+  }
+  $('impDays').addEventListener('click', e => { if (e.target.dataset.d !== undefined) pickDay(+e.target.dataset.d); });
+  document.querySelectorAll('input[name=impMode]').forEach(r => r.onchange = evaluate);
+  $('impReparse').onclick = evaluate;
+  $('impCancel').onclick = () => dlg.close();
+  $('impApply').onclick = () => {
+    if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
+    if (applyEntries(entries, mode() === 'plan' ? planSummary : null)) dlg.close();
+  };
+  $('btnImport').onclick = () => {
+    entries = []; renderPreview(); status(''); $('impDays').innerHTML = '';
+    $('impFile').value = '';
+    dlg.showModal();
+  };
+
+  // image → canvas, upscaled, greyscale, dark screenshots inverted (Tesseract wants dark text on light ground)
+  async function prepImage(src) {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild konnt net gelies ginn.')); i.src = src; });
+    const k = Math.min(3, Math.max(1, 1600 / img.naturalWidth)), c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
+    const px = g.getImageData(0, 0, c.width, c.height), d = px.data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) { const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; d[i] = d[i + 1] = d[i + 2] = y; sum += y; }
+    if (sum / (d.length / 4) < 110) for (let i = 0; i < d.length; i += 4) d[i] = d[i + 1] = d[i + 2] = 255 - d[i];
+    g.putImageData(px, 0, 0);
+    return c;
+  }
+  async function ocr(canvas) {
+    status('Texterkennung gëtt gelueden …');
+    await loadScript(TESS);
+    const { data } = await Tesseract.recognize(canvas, 'eng', {
+      logger: m => { if (m.status === 'recognizing text') status(`Text gëtt erkannt … ${Math.round(m.progress * 100)} %`); }
+    });
+    return data.text;
+  }
+  async function pdfText(file) {
+    status('PDF gëtt gelies …');
+    await loadScript(PDFJS);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    let text = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p), tc = await page.getTextContent();
+      const lines = [];
+      tc.items.filter(it => it.str.trim()).forEach(it => {
+        const y = it.transform[5], x = it.transform[4];
+        let ln = lines.find(l => Math.abs(l.y - y) < 3);
+        if (!ln) lines.push(ln = { y, parts: [] });
+        ln.parts.push({ x, s: it.str });
+      });
+      lines.sort((a, b) => b.y - a.y).forEach(l => text += l.parts.sort((a, b) => a.x - b.x).map(q => q.s).join(' ').replace(/\s+/g, ' ').trim() + '\n');
+      if (text.replace(/\s/g, '').length < 20) {           // scanned PDF → OCR the rendered page
+        const vp = page.getViewport({ scale: 2.5 }), c = document.createElement('canvas');
+        c.width = vp.width; c.height = vp.height;
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        text += await ocr(c) + '\n';
+      }
+    }
+    return text;
+  }
+  async function importFile(file) {
+    try {
+      $('impApply').disabled = true;
+      let text;
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) text = await pdfText(file);
+      else { const url = URL.createObjectURL(file); try { text = await ocr(await prepImage(url)); } finally { URL.revokeObjectURL(url); } }
+      $('impText').value = text;
+      setMode(DAY.test(text.split('\n').find(l => DAY.test(l.trim())) || '') || /\d+\s*[x×]\s*[\d(]/.test(text) ? 'plan' : 'laps');
+      evaluate();
+    } catch (err) { status(err.message || String(err), true); }
+  }
+  $('impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); };
+  window.lafenImport = { importFile, parsePlan, parseLaps, evaluate };   // for testing
 
   fillMeta(); buildRows(); calc(); showTimes();
 })();
