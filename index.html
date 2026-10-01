@@ -262,6 +262,9 @@
     <input id="partner" data-k="partner" class="span3">
     <span style="grid-column: span 2"></span>
 
+    <label for="place">Plaz</label>
+    <input id="place" data-k="place" class="span3" placeholder="Diekirch" title="Fir d'Wieder; bei engem FIT-Import gëtt d'GPS-Startplaz geholl">
+    <span style="grid-column: span 2"></span>
     <label for="temp">Temperatur</label>
     <div class="unit"><input id="temp" data-k="temp" class="num" inputmode="decimal"><span>°C</span></div>
     <span></span><span></span>
@@ -423,7 +426,7 @@
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
     training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
-    lacMin:'1,5', lacMax:'5,0', comment:'', wxLat:'', wxLon:'', wxAuto:null,
+    lacMin:'1,5', lacMax:'5,0', comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
     reps: Array.from({length:6}, blankRep)
   });
 
@@ -646,7 +649,8 @@
     else if (el.dataset.f) S.reps[el.dataset.r][el.dataset.f] = el.value;
     else return;
     calc();
-    if (el.dataset.k === 'date' || el.dataset.k === 'clock') { clearTimeout(wxTimer); wxTimer = setTimeout(maybeWeather, 700); }
+    if (el.dataset.k === 'place') { S.wxLat = S.wxLon = ''; }          // a typed place replaces the GPS start
+    if (['date', 'clock', 'place'].includes(el.dataset.k)) { clearTimeout(wxTimer); wxTimer = setTimeout(maybeWeather, el.dataset.k === 'place' ? 1200 : 700); }
   });
   rowsEl.addEventListener('click', e => {
     const i = e.target.dataset.del;
@@ -690,7 +694,7 @@
   $('btnNew').onclick = () => {
     if (!confirm('Neien Training ufänken? Num, Schwellen, Schong a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
-                  shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax};
+                  shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
@@ -1446,8 +1450,27 @@
   })();
 
   // ================= Weather from Open-Meteo (free, no key) for the date + time of day =================
-  // place: GPS start of an imported activity, else Dikrech. Only empty fields (or values it filled itself) are set.
-  const WX_HOME = { lat: 49.8681, lon: 6.1597, name: 'Dikrech' };
+  // place: GPS start of an imported activity, else the field "Plaz" (default Diekirch, looked up with Open-Meteo's
+  // geocoder). Only empty fields (or values it filled itself) are set.
+  const WX_HOME = { lat: 49.86687, lon: 6.15451, name: 'Diekirch' };
+  // the geocoder knows official names only: Luxembourgish names → official name
+  const LB_PLACES = { dikrech: 'Diekirch', ettelbréck: 'Ettelbruck', ettelbreck: 'Ettelbruck', iechternach: 'Echternach', wolz: 'Wiltz',
+    miersch: 'Mersch', lëtzebuerg: 'Luxembourg', letzebuerg: 'Luxembourg', 'esch-uelzecht': 'Esch-sur-Alzette', esch: 'Esch-sur-Alzette',
+    gréiwemaacher: 'Grevenmacher', réimech: 'Remich', klierf: 'Clervaux', veianen: 'Vianden', déifferdeng: 'Differdange',
+    diddeleng: 'Dudelange', bartreng: 'Bertrange', stroossen: 'Strassen', ierpeldeng: 'Erpeldange', bettenduerf: 'Bettendorf',
+    biekerech: 'Bigonville', kolmer: 'Colmar-Berg', 'kolmer-bierg': 'Colmar-Berg', rued: 'Redange', séiss: 'Syren' };
+  const geoCache = {};
+  async function geocode(name) {
+    const k = name.trim().toLowerCase();
+    if (!k || k === 'diekirch') return WX_HOME;
+    if (geoCache[k]) return geoCache[k];
+    const q = new URLSearchParams({ name: LB_PLACES[k] || name.trim(), count: 5, language: 'de' });
+    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?' + q);
+    const res = r.ok ? (await r.json()).results || [] : [];
+    const hit = res.find(x => x.country_code === 'LU') || res[0];          // prefer the Luxembourg one
+    if (!hit) throw new Error('place');
+    return geoCache[k] = { lat: hit.latitude, lon: hit.longitude, name: hit.name + (hit.country_code && hit.country_code !== 'LU' ? ` (${hit.country_code})` : '') };
+  }
   let wxTimer = 0, wxReq = 0, wxBusy = false;
   function wxIsAuto() { return !!(S.wxAuto && S.temp === S.wxAuto.temp && S.wind === S.wxAuto.wind); }
   async function maybeWeather() {
@@ -1457,14 +1480,20 @@
     const when = new Date(S.date + 'T' + S.clock);
     if (isNaN(when) || when - Date.now() > 30 * 60000) return;          // training not run yet
     const gps = S.wxLat !== '' && S.wxLat != null && S.wxLon !== '' && S.wxLon != null;
-    const lat = gps ? +S.wxLat : WX_HOME.lat, lon = gps ? +S.wxLon : WX_HOME.lon;
+    const id = ++wxReq;
+    let home;
+    if (!gps) {
+      try { home = await geocode(S.place || ''); }
+      catch { if (id === wxReq) $('wxNote').textContent = `Plaz „${S.place}“ net fonnt. W.e.gl. eng aner Schreifweis probéieren (z.B. Ettelbruck).`; return; }
+      if (id !== wxReq) return;
+    }
+    const lat = gps ? +S.wxLat : home.lat, lon = gps ? +S.wxLon : home.lon;
     const key = [S.date, S.clock, lat.toFixed(3), lon.toFixed(3)].join('|');
     if (auto && S.wxAuto.key === key) return;
     // the forecast API also holds the last ~3 months; older dates come from the archive (ERA5)
     const base = (Date.now() - when) / 864e5 > 60 ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
     const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: 'temperature_2m,wind_speed_10m',
                                     wind_speed_unit: 'kmh', timezone: 'auto', start_date: S.date, end_date: S.date });
-    const id = ++wxReq;
     wxBusy = true; $('wxNote').textContent = 'Wieder gëtt gesicht …';
     try {
       const r = await fetch(base + '?' + q);
@@ -1479,7 +1508,7 @@
       const auto2 = wxIsAuto();                                         // the runner may have typed meanwhile
       if (t != null && (!S.temp || auto2)) S.temp = dec(t, 1).replace(/,0$/, '');
       if (w != null && (!S.wind || auto2)) S.wind = String(Math.round(w));
-      S.wxAuto = { temp: S.temp, wind: S.wind, key, src: gps ? 'Startplaz vum Training' : WX_HOME.name };
+      S.wxAuto = { temp: S.temp, wind: S.wind, key, src: gps ? 'Startplaz vum Training' : home.name };
       $('temp').value = S.temp; $('wind').value = S.wind;
     } catch {
       if (id === wxReq) { wxBusy = false; $('wxNote').textContent = 'Wieder konnt net automatesch gelies ginn (Internet?). Temperatur a Wand w.e.gl. selwer aginn.'; return; }
