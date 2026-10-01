@@ -3,44 +3,62 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lafen Trainingsfeedback</title>
+<title>SauerBeen Trainingsfeedback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Titillium+Web:wght@700;900&display=swap">
 <style>
+  /* SauerBeen look (sauerbeen.lu): navy bar, yellow accent, Titillium Web Black + Inter.
+     The sheet itself keeps the Excel colours: blue inputs, grey results, red/yellow/green scale. */
   :root {
+    --sb-blue: #293d96;
+    --sb-blue-dark: #1f2e72;
+    --sb-yellow: #ffed00;
+    --sb-purple: #571170;
     --input: #cfe0f3;
     --input-line: #8fb0d6;
     --calc: #e3e1e1;
     --note: #f765cd;
     --head: #63be7b;
     --line: #222;
-    --text: #1a1a1a;
-    --muted: #666;
-    --bg: #f4f5f7;
+    --text: #414141;
+    --muted: #6b6b70;
+    --bg: #eef0f6;
     --paper: #fff;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+    font: 14px/1.4 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
   .toolbar {
     position: sticky; top: 0; z-index: 5;
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-    padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd;
+    padding: 10px 16px; background: var(--sb-blue); color: #fff;
   }
-  .toolbar h1 { font-size: 16px; margin: 0 auto 0 0; }
+  .toolbar h1 {
+    display: flex; align-items: center; gap: 10px; margin: 0 auto 0 0;
+    font: 900 18px/1 "Titillium Web", Inter, sans-serif; letter-spacing: .02em; text-transform: uppercase;
+  }
+  .toolbar h1 .sub { font-weight: 700; opacity: .9; }
   button {
-    font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
-    border: 1px solid #bbb; background: #fafafa;
+    font: inherit; font-weight: 500; padding: 6px 14px; border-radius: 18px; cursor: pointer;
+    border: 1px solid #c3c8da; background: #fff; color: var(--sb-blue);
   }
-  button:hover { background: #eee; }
-  button.primary { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
-  button.primary:hover { background: #255bb3; }
+  button:hover { background: #f1f3fa; }
+  button:focus-visible { outline: 2px solid var(--sb-yellow); outline-offset: 2px; }
+  button.primary { background: var(--sb-blue); border-color: var(--sb-blue); color: #fff; }
+  button.primary:hover { background: var(--sb-blue-dark); }
+  .toolbar button { background: transparent; border-color: rgba(255,255,255,.7); color: #fff; }
+  .toolbar button:hover { background: rgba(255,255,255,.12); }
+  .toolbar button.primary { background: var(--sb-yellow); border-color: var(--sb-yellow); color: var(--sb-blue); font-weight: 600; }
+  .toolbar button.primary:hover { background: #fff36b; }
   .sheet {
     max-width: 980px; margin: 16px auto; padding: 20px 24px 28px;
     background: var(--paper); box-shadow: 0 1px 4px rgba(0,0,0,.12);
   }
   .note {
-    background: var(--note); padding: 3px 8px; margin: 0 0 10px; font-size: 13px;
+    background: #eef1fb; border-left: 4px solid var(--sb-yellow); color: var(--sb-blue);
+    padding: 5px 10px; margin: 0 0 12px; font-size: 13px;
   }
   .note .k { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin: 0 3px 0 8px; border: 1px solid #555; }
 
@@ -58,7 +76,7 @@
     border: 1px solid var(--input-line); background: var(--input);
     padding: 2px 5px; border-radius: 2px;
   }
-  input:focus, textarea:focus { outline: 2px solid #2f6fd6; outline-offset: -1px; background: #fff; }
+  input:focus, textarea:focus { outline: 2px solid var(--sb-blue); outline-offset: -1px; background: #fff; }
   input.num { text-align: right; }
   input.bad { outline: 2px solid #d33; }
   .calc {
@@ -87,7 +105,7 @@
   td.cs input { background: transparent; }
   td.out { padding: 0 6px; text-align: right; font-variant-numeric: tabular-nums; }
   .ref td, .ref th { border-color: var(--line); }
-  .sec { background: var(--head); font-weight: 600; }
+  .sec { background: var(--sb-blue); color: #fff; font: 900 14px "Titillium Web", Inter, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
   tr.colhead th { border-top: 2px solid var(--line); border-bottom: 2px solid var(--line); }
   tr.pause td:first-child { color: #444; }
   tr.rep td:first-child { font-weight: 600; }
@@ -119,7 +137,8 @@
     .toolbar, .noprint, .rowbtns, td.del, th.del, .tip, .note, .rackrow { display: none !important; }
     .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; }
     .printonly { display: block; }
-    .ptitle { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+    .ptitle { display: flex !important; align-items: center; gap: 10px; background: var(--sb-blue); color: #fff;
+              font: 900 15px "Titillium Web", Inter, sans-serif; text-transform: uppercase; padding: 6px 10px; margin: 0 0 8px; }
     input, textarea { border-color: transparent; background: transparent; }
     .meta input { background: var(--input); border-color: var(--input-line); }
     td.in, td.in input { background: transparent; }
@@ -137,16 +156,16 @@
     border: 1px solid #bbb; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.25);
   }
   dialog#imp::backdrop { background: rgba(20,25,35,.45); }
-  #imp h2 { font-size: 17px; margin: 0 0 4px; }
+  #imp h2 { font: 900 20px "Titillium Web", Inter, sans-serif; color: var(--sb-blue); text-transform: uppercase; margin: 0 0 4px; }
   #imp .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
   #imp .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 10px 0; }
   #imp .row label { display: inline-flex; gap: 5px; align-items: center; }
   #imp .row input[type=radio] { width: auto; }
-  #impStatus { font-size: 13px; color: #2f6fd6; min-height: 18px; }
+  #impStatus { font-size: 13px; color: var(--sb-blue); min-height: 18px; }
   #impStatus.err { color: #c22; }
   #impDays { display: flex; flex-wrap: wrap; gap: 6px; }
   #impDays button { font-size: 13px; padding: 4px 10px; }
-  #impDays button.on { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
+  #impDays button.on { background: var(--sb-blue); border-color: var(--sb-blue); color: #fff; }
   #impText { min-height: 110px; font: 12px/1.4 ui-monospace, Menlo, monospace; }
   #imp details { margin: 10px 0; }
   #imp summary { cursor: pointer; font-size: 13px; }
@@ -165,10 +184,10 @@
   }
   #drop span { font-size: 12px; color: var(--muted); }
   #drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-  #drop.over, body.dragging #drop { border-color: #2f6fd6; background: #e3eefc; }
+  #drop.over, body.dragging #drop { border-color: var(--sb-blue); background: #e3e8f8; }
   #dropAll {
     position: fixed; inset: 0; z-index: 50; display: none; place-items: center;
-    background: rgba(47,111,214,.15); border: 4px dashed #2f6fd6; font-size: 22px; font-weight: 600; color: #1d4fa3;
+    background: rgba(41,61,150,.15); border: 4px dashed var(--sb-blue); font: 900 24px "Titillium Web", Inter, sans-serif; color: var(--sb-blue);
   }
   body.dragging #dropAll { display: grid; }
   @media print { #dropAll { display: none !important; } }
@@ -180,13 +199,13 @@
   #stravaList small { color: var(--muted); white-space: nowrap; }
   #stravaOff { font-size: 12px; color: var(--muted); background: none; border: 0; text-decoration: underline; padding: 0 4px; }
   #imp .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  .rowbtns select { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; }
+  .rowbtns select { font: inherit; padding: 5px 10px; border-radius: 18px; border: 1px solid #c3c8da; background: #fff; color: var(--sb-blue); }
 </style>
 </head>
 <body>
 
 <div class="toolbar">
-  <h1>Lafen · Trainingsfeedback</h1>
+  <h1>SauerBeen <span class="sub">· Trainingsfeedback Lafen</span></h1>
   <button id="btnImport" title="Reps a Pausen aus Foto, Screenshot, FIT/TCX/GPX, Strava oder Trainingsplang uleeën">Training importéieren</button>
   <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neien Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
@@ -199,7 +218,7 @@
   <p class="note">Blo Casen w.e.gl. ausfëllen, gro gëtt berechent.
     <span class="k" style="background:var(--input)"></span>Agab
     <span class="k" style="background:var(--calc)"></span>berechent</p>
-  <div class="printonly ptitle" id="ptitle"></div>
+  <div class="printonly ptitle"><span id="ptitle"></span></div>
 
   <div class="meta">
     <label>Pdf-Num</label>
@@ -519,7 +538,7 @@
     // =CONCATENATE(JJMMDD," ",Num," -- ",Ënnergrond," -- ",Training)
     const pdfName = `${ymd} ${S.name} -- ${S.surface} -- ${S.training}`;
     $('pdfName').textContent = pdfName;
-    $('ptitle').textContent = 'Trainingsfeedback Lafen · ' + pdfName;
+    $('ptitle').textContent = 'SauerBeen · Trainingsfeedback Lafen · ' + pdfName;
 
     const paceThr = secs(S.paceThr), hrThr = num(S.hrThr);
     $('paceThr').classList.toggle('bad', S.paceThr !== '' && !isFinite(paceThr));
@@ -643,7 +662,7 @@
     const res = parsePlan(S.training);
     if (!res.entries.some(e => e.type === 'rep')) { alert('Am Feld „Training“ keen Muster wéi „6x1000 (60s)“ fonnt.'); return; }
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    impMeta = null; applyEntries(res.entries, null);
+    impMeta = null; planDate = ''; applyEntries(res.entries, null);
   };
   $('preset').onchange = e => {
     const v = e.target.value, label = e.target.selectedOptions[0].textContent;
@@ -746,13 +765,27 @@
   const E = (type, o = {}) => Object.assign({ type, dist: '', time: '', hr: '', note: '', hrs: [] }, o);
 
   // ---------- plan text → entries ----------
-  const DAY = /^(m[eé]i?nd|d[eë]nschd|m[eë]tt?woch|donnesch|freid|sam?sch?d|sonnd|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|monday|tuesday|wednesday|thursday|friday|saturday|sunday|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i;
+  const DAY = /^(m[eé]i?nd|d[eë]nschd|m[eë]tt?woch|donnesch|freid|sam?sc?h?d|sonnd|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|monday|tuesday|wednesday|thursday|friday|saturday|sunday|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i;
   const WARM = /laa?f|lauf|warm|cool|easy|locker|einl|ausl|recup|r[ée]cup|jog|\b(wu|cd|w\/u|c\/d|ee|ea)\b/i;
   // pause written with a prefix: "p90s", "P: 2min", "r60s", "rec 90s", "Paus 1'", "rest 2min"
   const PAUSE_PREFIX = /^(p|r|rec|rest|recovery|paus[e]?|break|trab|jog)\s*[:.]?\s*(?=\d)/i;
   // OCR confusions in the leading number: "Gmin" → "6min", "Bmin" → "8min", "Ox" → "0x" …
   const OCR_DIGIT = { G: '6', b: '6', S: '5', s: '5', O: '0', o: '0', l: '1', I: '1', B: '8', Z: '2', z: '2' };
   const fixLead = l => l.replace(/^([GbSsOolIBZz])(\d*)(?=\s*(?:min|mn|sec|s|km|k|m|x|')\b)/, (a, c, d) => OCR_DIGIT[c] + d);
+  // summary for the "Training" field: no pause brackets, e.g. "5x60s hills + 8min threshold"
+  const clean = raw => bracketPause(fixLead(raw)).rest.replace(/\s+/g, ' ').trim();
+  // weekday name → nearest date with that weekday (−3 … +3 days): Friday's session seen on Thursday = tomorrow,
+  // Sunday's long run filled in on Monday = yesterday
+  const WEEKDAYS = [/^(sonnd|sonntag|sunday|dimanche)/i, /^(m[eé]i?nd|montag|monday|lundi)/i, /^(d[eë]nschd|dienstag|tuesday|mardi)/i,
+    /^(m[eë]tt?woch|mittwoch|wednesday|mercredi)/i, /^(donnesch|donnerstag|thursday|jeudi)/i, /^(freid|freitag|friday|vendredi)/i, /^(sam?sc?h?d|samstag|saturday|samedi)/i];
+  const dateOfDay = name => {
+    const wd = WEEKDAYS.findIndex(re => re.test(String(name).trim()));
+    if (wd < 0) return '';
+    const d = new Date(), back = (d.getDay() - wd + 7) % 7;
+    d.setDate(d.getDate() + (back <= 3 ? -back : 7 - back));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  let planDate = '';
   function splitDays(text) {
     const blocks = []; let cur = null;
     text.split(/\n/).forEach(raw => {
@@ -807,7 +840,7 @@
           // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
           else if (isFinite(pause)) out.push(E('pause', { time: fmtMS(pause) }));
         });
-        used.push(raw);
+        used.push(clean(raw));
         continue;
       }
       m = l.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)(?=[\s(]|$)\s*(.*)$/);
@@ -821,7 +854,7 @@
       if (it.dist && (!note || WARM.test(note))) { plain.push(it.dist); continue; }
       out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
       if (isFinite(bp.pause)) out.push(E('pause', { time: fmtMS(bp.pause) }));
-      used.push(raw);
+      used.push(clean(raw));
     }
     // a pause after the very last rep is not part of the session (cool-down follows)
     while (out.length && out[out.length - 1].type === 'pause') out.pop();
@@ -1114,7 +1147,8 @@
     });
     if (!reps.length) return false;
     S.reps = reps;
-    if (training && !S.training) S.training = training;
+    if (training) S.training = training;                       // plan import: the plan names the session
+    if (planDate) S.date = planDate;
     // date / time / weather from a FIT file: today's default date is replaced, typed values are kept
     const mf = metaFields(impMeta);
     if (mf.date && (!S.date || S.date === defaults().date)) S.date = mf.date;
@@ -1155,7 +1189,7 @@
   });
   function evaluate() {
     const text = $('impText').value;
-    $('impDays').innerHTML = '';
+    $('impDays').innerHTML = ''; planDate = '';
     if (mode() === 'plan') {
       dayBlocks = splitDays(text);
       if (dayBlocks.length > 1) {
@@ -1170,7 +1204,7 @@
         return;
       }
       const r = parsePlan(text); entries = r.entries; planSummary = r.summary;
-      status(entries.length ? 'Plang gelies. W.e.gl. kontrolléieren.' + unreadText(r.unread) : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length || r.unread.length > 0);
+      status(entries.length ? `Plang gelies: ${r.summary}. W.e.gl. kontrolléieren.` + unreadText(r.unread) : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length || r.unread.length > 0);
     } else {
       entries = parseLaps(text); planSummary = '';
       status(entries.length ? `${entries.length} Runde fonnt. Typ (Rep/Paus) a Wäerter w.e.gl. kontrolléieren.` : 'Keng Runde mat Zäiten fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
@@ -1181,8 +1215,9 @@
   function pickDay(i) {
     $('impDays').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
     const r = parsePlan(dayBlocks[i].lines.join('\n'));
-    entries = r.entries; planSummary = r.summary;
-    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps. W.e.gl. kontrolléieren.` + unreadText(r.unread), r.unread.length > 0);
+    entries = r.entries; planSummary = r.summary; planDate = dateOfDay(dayBlocks[i].day);
+    const dTxt = planDate ? ` Datum: ${planDate.split('-').reverse().join('.')}.` : '';
+    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps.${dTxt} W.e.gl. kontrolléieren.` + unreadText(r.unread), r.unread.length > 0);
     renderPreview();
   }
   // track reps: GPS distance → nearest 100 m when within 5 % (1612 m → 1600 m)
@@ -1203,7 +1238,7 @@
     if (applyEntries(entries, mode() === 'plan' ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
-    entries = []; impMeta = null; renderPreview(); status(''); $('impDays').innerHTML = '';
+    entries = []; impMeta = null; planDate = ''; renderPreview(); status(''); $('impDays').innerHTML = '';
     $('impRoundRow').hidden = true; $('impRound').checked = false;
     $('impFile').value = ''; stravaUi();
     dlg.showModal();
