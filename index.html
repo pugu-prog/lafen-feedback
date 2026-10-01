@@ -713,6 +713,15 @@
     if (/^\d+(?:[.,]\d+)?$/.test(t)) { const v = num(t); return v >= 100 ? v : v < 50 ? v * 1000 : NaN; }
     return NaN;
   };
+  const bracketPause = txt => {
+    let d = NaN;
+    const rest = txt.replace(/\(([^)]*)\)/g, (a, b) => {
+      const tok = b.toLowerCase().split(/\s+/).map(parseDur).find(isFinite);
+      if (tok != null && isFinite(tok)) { d = tok; return ' '; }
+      return a;
+    });
+    return { pause: d, rest };
+  };
   const tokItem = t => {
     const d = parseDur(t); if (isFinite(d)) return { time: d };
     const m = parseDistTok(t); if (isFinite(m)) return { dist: m };
@@ -722,7 +731,12 @@
 
   // ---------- plan text → entries ----------
   const DAY = /^(m[eé]i?nd|d[eë]nschd|m[eë]tt?woch|donnesch|freid|sam?sch?d|sonnd|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|monday|tuesday|wednesday|thursday|friday|saturday|sunday|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i;
-  const WARM = /laa?f|lauf|warm|cool|easy|locker|einl|ausl|recup|r[ée]cup|jog/i;
+  const WARM = /laa?f|lauf|warm|cool|easy|locker|einl|ausl|recup|r[ée]cup|jog|\b(wu|cd|w\/u|c\/d|ee|ea)\b/i;
+  // pause written with a prefix: "p90s", "P: 2min", "r60s", "rec 90s", "Paus 1'", "rest 2min"
+  const PAUSE_PREFIX = /^(p|r|rec|rest|recovery|paus[e]?|break|trab|jog)\s*[:.]?\s*(?=\d)/i;
+  // OCR confusions in the leading number: "Gmin" → "6min", "Bmin" → "8min", "Ox" → "0x" …
+  const OCR_DIGIT = { G: '6', b: '6', S: '5', s: '5', O: '0', o: '0', l: '1', I: '1', B: '8', Z: '2', z: '2' };
+  const fixLead = l => l.replace(/^([GbSsOolIBZz])(\d*)(?=\s*(?:min|mn|sec|s|km|k|m|x|')\b)/, (a, c, d) => OCR_DIGIT[c] + d);
   function splitDays(text) {
     const blocks = []; let cur = null;
     text.split(/\n/).forEach(raw => {
@@ -737,7 +751,7 @@
     return blocks.filter(b => b.lines.length);
   }
   function parsePlan(text) {
-    const out = [], plain = [], used = [];
+    const out = [], plain = [], used = [], unread = [];
     const lines = String(text).split(/\n|;/).map(l => l.replace(/^[\s•\-–*·]+/, '').trim()).filter(Boolean);
     const lastRep = () => { for (let i = out.length - 1; i >= 0; i--) if (out[i].type === 'rep') return i; return -1; };
     const addPause = sec => {
@@ -747,7 +761,12 @@
       else out.splice(i + 1, 0, E('pause', { time: fmtMS(sec) }));
     };
     for (const raw of lines) {
-      const l = raw.toLowerCase().replace(/×/g, 'x');
+      let l = fixLead(raw).toLowerCase().replace(/×/g, 'x');
+      const pp = l.match(PAUSE_PREFIX);
+      if (pp) {                                                 // "p90s" → pause after the last rep
+        const d = parseDur(l.slice(pp[0].length).replace(/\(.*\)/, '').trim());
+        if (isFinite(d)) { addPause(d); continue; }
+      }
       let m = l.match(/^(\d+)\s*x\s*(.+)$/);
       if (m) {
         const n = +m[1]; let rest = m[2].trim(), items;
@@ -756,38 +775,43 @@
           items = rest.slice(1, j).split(/\s*[-–\/+,]\s*/); rest = rest.slice(j + 1);
         } else {
           const t = rest.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)/);
-          if (!t) continue;
+          if (!t) { unread.push(raw); continue; }
           items = [t[1]]; rest = rest.slice(t[0].length);
         }
         const its = items.map(tokItem);
-        if (!its.length || its.some(x => !x) || n < 1 || n > 60) continue;
-        let pause = NaN;
-        rest = rest.replace(/\(([^)]*)\)/g, (a, b) => { const d = parseDur(b); if (isFinite(d)) { pause = d; return ' '; } return a; });
-        const note = rest.replace(/\s+/g, ' ').trim();
+        if (!its.length || its.some(x => !x) || n < 1 || n > 60) { unread.push(raw); continue; }
+        const bp = bracketPause(rest), pause = bp.pause;
+        const note = bp.rest.replace(/\s+/g, ' ').trim();
         for (let k = 0; k < n; k++) its.forEach((it, idx) => {
           out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
           const isLast = k === n - 1 && idx === its.length - 1;
-          if (!isLast) out.push(E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
+          // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
+          if (!isLast || isFinite(pause)) out.push(E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
         });
         used.push(raw);
         continue;
       }
       m = l.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)(?=[\s(]|$)\s*(.*)$/);
-      if (!m) continue;
-      const it = tokItem(m[1]); if (!it) continue;
-      const note = m[2].replace(/\s+/g, ' ').trim();
+      // lines without any number (titles like "Beschreiwung", "Freides") are not training steps
+      if (!m) { if (/\d/.test(l)) unread.push(raw); continue; }
+      const it = tokItem(m[1]); if (!it) { unread.push(raw); continue; }
+      const bp = bracketPause(m[2]);                              // "8min threshold (90s Paus)"
+      const note = bp.rest.replace(/\s+/g, ' ').trim();
       if (it.time && !note) { addPause(it.time); continue; }
       // warm-up / cool-down / easy running is not a rep ("4km", "2km auslaaf", "3km easy")
       if (it.dist && (!note || WARM.test(note))) { plain.push(it.dist); continue; }
       out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
+      if (isFinite(bp.pause)) out.push(E('pause', { time: fmtMS(bp.pause) }));
       used.push(raw);
     }
+    // a pause after the very last rep is not part of the session (cool-down follows)
+    while (out.length && out[out.length - 1].type === 'pause') out.pop();
     // no structured reps: a lone distance (e.g. "14km" long run) becomes one rep
     if (!out.some(e => e.type === 'rep') && plain.length) {
       const d = Math.max(...plain);
       out.push(E('rep', { dist: fmtNum(d) })); used.push(fmtNum(d / 1000) + 'km');
     }
-    return { entries: out, summary: used.join(' + ') };
+    return { entries: out, summary: used.join(' + '), unread };
   }
 
   // ---------- lap list (watch app / display) text → entries ----------
@@ -1127,18 +1151,19 @@
         return;
       }
       const r = parsePlan(text); entries = r.entries; planSummary = r.summary;
-      status(entries.length ? 'Plang gelies. W.e.gl. kontrolléieren.' : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
+      status(entries.length ? 'Plang gelies. W.e.gl. kontrolléieren.' + unreadText(r.unread) : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length || r.unread.length > 0);
     } else {
       entries = parseLaps(text); planSummary = '';
       status(entries.length ? `${entries.length} Runde fonnt. Typ (Rep/Paus) a Wäerter w.e.gl. kontrolléieren.` : 'Keng Runde mat Zäiten fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
     }
     renderPreview();
   }
+  const unreadText = u => u.length ? ` Net verstan: „${u.join('“, „')}“ – Text ënnen verbesseren an „Nei auswäerten“.` : '';
   function pickDay(i) {
     $('impDays').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
     const r = parsePlan(dayBlocks[i].lines.join('\n'));
     entries = r.entries; planSummary = r.summary;
-    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps. W.e.gl. kontrolléieren.`);
+    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps. W.e.gl. kontrolléieren.` + unreadText(r.unread), r.unread.length > 0);
     renderPreview();
   }
   // track reps: GPS distance → nearest 100 m when within 5 % (1612 m → 1600 m)
