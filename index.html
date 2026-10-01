@@ -700,12 +700,12 @@
     catch { alert('Fichier konnt net gelies ginn.'); }
     e.target.value = '';
   };
-  $('btnPdf').onclick = () => {
-    const old = document.title;
-    document.title = $('pdfName').textContent || old;   // becomes the suggested PDF filename
-    window.print();
-    setTimeout(() => document.title = old, 500);
-  };
+  // the page title becomes the suggested PDF file name ("260930 Guy -- Piste -- 4x1600", like the Excel);
+  // it is put back only after the print dialog is closed (Safari does not wait in window.print())
+  const PAGE_TITLE = document.title;
+  window.addEventListener('beforeprint', () => { document.title = $('pdfName').textContent.trim() || PAGE_TITLE; });
+  window.addEventListener('afterprint', () => { document.title = PAGE_TITLE; });
+  $('btnPdf').onclick = () => window.print();
 
 
   // ================= Import from screenshot / photo / plan (image or PDF) =================
