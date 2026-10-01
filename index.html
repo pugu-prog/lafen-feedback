@@ -422,6 +422,7 @@
 <script>
 (() => {
   const STORE = 'lafen-feedback-v1';
+  const PAGE_TITLE = document.title;
   const RED = [0xF8,0x69,0x6B], YEL = [0xFF,0xEB,0x84], GRN = [0x63,0xBE,0x7B];
 
   const blankRep = () => ({ dist:'', time:'', hr:'', lac:'', note:'',
@@ -552,6 +553,9 @@
     const pdfName = `${ymd} ${S.name} -- ${S.surface} -- ${S.training}`;
     $('pdfName').textContent = pdfName;
     $('ptitle').textContent = 'Trainingsfeedback Lafen · ' + pdfName;
+    // the page title is what browsers offer as PDF file name: keep it on the PDF name all the time
+    // (setting it only on beforeprint is too late for Safari and the iPhone share sheet)
+    document.title = String(S.name || '').trim() || String(S.training || '').trim() ? pdfName.trim() : PAGE_TITLE;
 
     const paceThr = secs(S.paceThr), hrThr = num(S.hrThr);
     $('paceThr').classList.toggle('bad', S.paceThr !== '' && !isFinite(paceThr));
@@ -716,11 +720,7 @@
     catch { alert('Fichier konnt net gelies ginn.'); }
     e.target.value = '';
   };
-  // the page title becomes the suggested PDF file name ("260930 Guy -- Piste -- 4x1600", like the Excel);
-  // it is put back only after the print dialog is closed (Safari does not wait in window.print())
-  const PAGE_TITLE = document.title;
-  window.addEventListener('beforeprint', () => { document.title = $('pdfName').textContent.trim() || PAGE_TITLE; });
-  window.addEventListener('afterprint', () => { document.title = PAGE_TITLE; });
+  // suggested PDF file name = page title = "260930 Guy -- Piste -- 4x1600" (like the Excel), set in calc()
   $('btnPdf').onclick = () => window.print();
 
 
