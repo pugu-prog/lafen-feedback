@@ -355,6 +355,18 @@
     <label><input type="radio" name="impMode" value="plan"> Trainingsplang (Reps virbereeden)</label>
   </div>
   <div id="impDays"></div>
+  <details>
+    <summary>Schreifweis fir Trainingspläng</summary>
+    <div class="hint" style="margin:6px 0 0">
+      <code>4km WU</code> Ee-/Auslafen (WU, CD, Auslaf …) zielt net als Rep ·
+      <code>6x1000m (60s)</code> Reps mat Paus dertëscht ·
+      <code>4x(1600-1200) (60s)</code> Serie ·
+      <code>8min threshold @ 4:50</code> Rep no Zäit, Zil-Pace als Kommentar ·
+      <code>p90s</code> oder <code>90s</code> eleng op enger Zeil = Paus nom Block ·
+      <code>5x30s rop (rof)</code> Hills: rop lafen, rof trabéieren, direkt déi nächst.
+      <br>Beispill: <code>4km WU · 5x60s rop (rof) · p90s · 8min threshold · p90s · 5x30s rop (rof) · p90s · 6min threshold · 2km CD</code>
+    </div>
+  </details>
   <details id="impTextBox">
     <summary>Erkannten Text weisen / verbesseren (oder Text hei apechen)</summary>
     <textarea id="impText" spellcheck="false" placeholder="z.B. 4km&#10;12x600m (45s)&#10;2km"></textarea>
@@ -713,14 +725,18 @@
     if (/^\d+(?:[.,]\d+)?$/.test(t)) { const v = num(t); return v >= 100 ? v : v < 50 ? v * 1000 : NaN; }
     return NaN;
   };
+  const DOWN = /\b(e?rof|rof|trab\w*|jog\w*|down|back|retour)\b/i;     // "(rof)", "(trab rof)", "(jog down)"
+  const HILL = /\b(rop|e?rop|hills?|uphill|bierg\w*|c[oô]tes?|steigung)\b/i;
   const bracketPause = txt => {
-    let d = NaN;
+    let d = NaN, down = false;
     const rest = txt.replace(/\(([^)]*)\)/g, (a, b) => {
       const tok = b.toLowerCase().split(/\s+/).map(parseDur).find(isFinite);
+      const isDown = DOWN.test(b);
+      if (isDown) down = true;
       if (tok != null && isFinite(tok)) { d = tok; return ' '; }
-      return a;
+      return isDown ? ' ' : a;
     });
-    return { pause: d, rest };
+    return { pause: d, down, rest };
   };
   const tokItem = t => {
     const d = parseDur(t); if (isFinite(d)) return { time: d };
@@ -757,7 +773,7 @@
     const addPause = sec => {
       const i = lastRep(); if (i < 0) return;
       const next = out[i + 1];
-      if (next && next.type === 'pause') { if (!next.time) next.time = fmtMS(sec); }
+      if (next && next.type === 'pause') { if (!next.time) { next.time = fmtMS(sec); next.note = ''; } }
       else out.splice(i + 1, 0, E('pause', { time: fmtMS(sec) }));
     };
     for (const raw of lines) {
@@ -782,11 +798,14 @@
         if (!its.length || its.some(x => !x) || n < 1 || n > 60) { unread.push(raw); continue; }
         const bp = bracketPause(rest), pause = bp.pause;
         const note = bp.rest.replace(/\s+/g, ' ').trim();
+        // hills: recovery = jog back down (no fixed time); a time in brackets is the pause after the block
+        const down = bp.down || HILL.test(note);
         for (let k = 0; k < n; k++) its.forEach((it, idx) => {
           out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
           const isLast = k === n - 1 && idx === its.length - 1;
+          if (!isLast) out.push(down ? E('pause', { note: 'rof trabéieren' }) : E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
           // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
-          if (!isLast || isFinite(pause)) out.push(E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
+          else if (isFinite(pause)) out.push(E('pause', { time: fmtMS(pause) }));
         });
         used.push(raw);
         continue;
