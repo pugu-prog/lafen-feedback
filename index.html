@@ -96,10 +96,10 @@
   textarea { min-height: 70px; resize: vertical; }
   .summary { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; color: #333; font-size: 13px; }
   .summary b { font-variant-numeric: tabular-nums; }
-  .printonly { display: none; }
+  .printonly, .commentprint { display: none; }
   .tip { color: var(--muted); font-size: 12px; margin-top: 18px; }
 
-  @media (max-width: 720px) {
+  @media screen and (max-width: 720px) {
     .sheet { padding: 14px 16px; margin: 0; box-shadow: none; }
     .meta { grid-template-columns: 110px 1fr; }
     .meta .span2, .meta .span3, .meta .span5 { grid-column: span 1; }
@@ -121,10 +121,9 @@
     table { min-width: 0; }
     th, td { height: 20px; }
     textarea { display: none; }
-    .commentprint { display: block; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
+    .commentprint { display: block !important; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
     .tablewrap { overflow: visible; }
   }
-  .commentprint { display: none; }
 
   /* Import dialog */
   dialog#imp {
@@ -183,7 +182,7 @@
 <div class="toolbar">
   <h1>Lafen · Trainingsfeedback</h1>
   <button id="btnImport" title="Reps a Pausen aus Foto, Screenshot, FIT/TCX/GPX, Strava oder Trainingsplang uleeën">Training importéieren</button>
-  <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neit Training</button>
+  <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neien Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
   <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
   <input type="file" id="fileIn" accept=".json,application/json" hidden>
@@ -219,13 +218,13 @@
     <input id="surface" data-k="surface" class="span5" placeholder="Piste, Stroos, Bësch …">
     <label for="shoe">Schung</label>
     <input id="shoe" data-k="shoe" class="span3">
-    <span class="noprint" style="grid-column: span 2"></span>
+    <span style="grid-column: span 2"></span>
     <label for="nutrition">Nutritioun</label>
     <input id="nutrition" data-k="nutrition" class="span3">
-    <span class="noprint" style="grid-column: span 2"></span>
+    <span style="grid-column: span 2"></span>
     <label for="partner">Trainingspartner</label>
     <input id="partner" data-k="partner" class="span3">
-    <span class="noprint" style="grid-column: span 2"></span>
+    <span style="grid-column: span 2"></span>
 
     <label for="temp">Temperatur</label>
     <div class="unit"><input id="temp" data-k="temp" class="num" inputmode="decimal"><span>°C</span></div>
@@ -625,7 +624,7 @@
   };
 
   $('btnNew').onclick = () => {
-    if (!confirm('Neit Training ufänken? Num, Schwellen, Schung a Laktat-Grenzen bleiwen.')) return;
+    if (!confirm('Neien Training ufänken? Num, Schwellen, Schung a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, lacMin:S.lacMin, lacMax:S.lacMax};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
