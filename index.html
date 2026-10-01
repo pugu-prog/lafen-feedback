@@ -608,7 +608,7 @@
     const res = parsePlan(S.training);
     if (!res.entries.some(e => e.type === 'rep')) { alert('Am Feld „Training“ keen Muster wéi „6x1000 (60s)“ fonnt.'); return; }
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    applyEntries(res.entries, null);
+    impMeta = null; applyEntries(res.entries, null);
   };
   $('preset').onchange = e => {
     const v = e.target.value, label = e.target.selectedOptions[0].textContent;
@@ -847,9 +847,10 @@
     return { mn, mx };
   }
 
-  // Minimal FIT decoder: reads lap (19) and record (20) messages
+  // Minimal FIT decoder: lap (19), record (20), session (18), activity (34), weather_conditions (128)
+  const FIT_EPOCH = 631065600;                         // 1989-12-31T00:00:00Z
   function parseFIT(buf) {
-    const dv = new DataView(buf), laps = [], recs = [];
+    const dv = new DataView(buf), laps = [], recs = [], meta = {};
     let off = 0;
     while (off + 12 <= buf.byteLength) {
       const hs = dv.getUint8(off), size = dv.getUint32(off + 4, true);
@@ -863,7 +864,7 @@
           const local = h & 0x0F, dev = h & 0x20;
           p++; const little = dv.getUint8(p++) === 0, g = dv.getUint16(p, little); p += 2;
           const nf = dv.getUint8(p++), fields = [];
-          for (let i = 0; i < nf; i++, p += 3) fields.push({ n: dv.getUint8(p), sz: dv.getUint8(p + 1) });
+          for (let i = 0; i < nf; i++, p += 3) fields.push({ n: dv.getUint8(p), sz: dv.getUint8(p + 1), bt: dv.getUint8(p + 2) & 0x1F });
           let devSize = 0;
           if (dev) { const nd = dv.getUint8(p++); for (let i = 0; i < nd; i++, p += 3) devSize += dv.getUint8(p + 1); }
           defs[local] = { g, little, fields, devSize };
@@ -877,30 +878,42 @@
         const def = defs[local]; if (!def) throw new Error('FIT-Fichier ass beschiedegt.');
         const v = {};
         for (const fd of def.fields) {
-          const x = read(p, fd.sz, def.little);
-          if (x != null && x !== INVALID[fd.sz]) v[fd.n] = x;
+          let x = read(p, fd.sz, def.little);
+          const signed = fd.bt === 1 || fd.bt === 3 || fd.bt === 5;      // sint8 / sint16 / sint32
+          if (x != null && signed) {
+            const half = 2 ** (8 * fd.sz - 1);
+            x = x === half - 1 ? null : x >= half ? x - 2 * half : x;    // 0x7F… = invalid
+          } else if (x === INVALID[fd.sz]) x = null;
+          if (x != null) v[fd.n] = x;
           p += fd.sz;
         }
         p += def.devSize;
         if (v[253] != null) { lastTs = v[253]; ts = v[253]; }
         if (def.g === 20 && v[3] != null && ts != null) recs.push({ ts, hr: v[3] });
+        if (def.g === 128 && v[1] != null && meta.temp == null) {          // weather from the phone (0 = current report)
+          if (v[0] == null || v[0] === 0) { meta.temp = v[1]; if (v[4] != null) meta.wind = v[4] / 1000 * 3.6; }
+        }
+        if (def.g === 18) { if (v[2] != null) meta.start ??= v[2]; if (v[57] != null) meta.sensorTemp ??= v[57]; }
+        if (def.g === 34 && v[5] != null && v[253] != null) meta.tzOffset = v[5] - v[253];
         if (def.g === 19) laps.push({ start: v[2], end: v[253] ?? ts, t: (v[8] ?? v[7]) / 1000, d: v[9] != null ? v[9] / 100 : NaN,
                                       hrAvg: v[15], hrMax: v[16], hrMin: v[63], intensity: v[23] });
       }
       off = end + 2;                                         // skip CRC, next chained FIT file
     }
     if (!laps.length) throw new Error('Am FIT-Fichier si keng Runden.');
+    meta.start ??= laps[0].start;
     // intensity from structured workouts: 0 active, 1 rest, 2 warm-up, 3 cool-down, 4 recovery
     const useInt = laps.some(l => l.intensity === 1 || l.intensity === 4) && laps.some(l => l.intensity === 0 || l.intensity == null);
-    return laps.map(l => {
+    for (const l of laps) {
       if (recs.length && l.start != null && l.end != null) {
         const r = hrRange(recs, l.start, l.end);
         if (l.hrMin == null) l.hrMin = r.mn;
         if (l.hrMax == null) l.hrMax = r.mx;
       }
       l.kind = !useInt ? '' : l.intensity === 1 || l.intensity === 4 ? 'pause' : l.intensity === 2 || l.intensity === 3 ? 'skip' : 'rep';
-      return l;
-    });
+    }
+    laps.meta = meta;
+    return laps;
   }
 
   function parseTCX(xml) {
@@ -994,6 +1007,30 @@
     return kind === 'tcx' ? parseTCX(txt) : parseGPX(txt);
   }
 
+  // ---------- activity meta (FIT): date, time of day, weather ----------
+  let impMeta = null;
+  const metaFields = m => {
+    if (!m) return {};
+    const o = {};
+    if (m.start != null) {
+      const utc = (m.start + FIT_EPOCH) * 1000;
+      // local time: offset recorded by the watch if present, else this browser's time zone
+      const d = m.tzOffset != null ? new Date(utc + m.tzOffset * 1000) : new Date(utc - new Date(utc).getTimezoneOffset() * 60000);
+      o.date = d.toISOString().slice(0, 10); o.clock = d.toISOString().slice(11, 16);
+    }
+    if (m.temp != null) o.temp = String(m.temp);
+    if (m.wind != null) o.wind = dec(m.wind, 1).replace(/,0$/, '');
+    return o;
+  };
+  const metaText = m => {
+    const o = metaFields(m), parts = [];
+    if (o.date) parts.push(`${o.date.split('-').reverse().join('.')} ${o.clock}`);
+    if (o.temp) parts.push(`${o.temp} °C`);
+    if (o.wind) parts.push(`Wand ${o.wind} km/h`);
+    if (m && m.temp == null) parts.push(m.sensorTemp != null ? `keng Wiederdonnéeën (Auer-Sensor ${m.sensorTemp} °C, net iwwerholl)` : 'keng Wiederdonnéeën');
+    return parts.length ? ' ' + parts.join(' · ') + '.' : '';
+  };
+
   // ---------- entries → sheet ----------
   function applyEntries(list, training) {
     const reps = [];
@@ -1011,6 +1048,10 @@
     if (!reps.length) return false;
     S.reps = reps;
     if (training && !S.training) S.training = training;
+    // date / time / weather from a FIT file: today's default date is replaced, typed values are kept
+    const mf = metaFields(impMeta);
+    if (mf.date && (!S.date || S.date === defaults().date)) S.date = mf.date;
+    for (const k of ['clock', 'temp', 'wind']) if (mf[k] && !S[k]) S[k] = mf[k];
     fillMeta(); buildRows(); calc(); showTimes();
     return true;
   }
@@ -1094,7 +1135,7 @@
     if (applyEntries(entries, mode() === 'plan' ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
-    entries = []; renderPreview(); status(''); $('impDays').innerHTML = '';
+    entries = []; impMeta = null; renderPreview(); status(''); $('impDays').innerHTML = '';
     $('impRoundRow').hidden = true; $('impRound').checked = false;
     $('impFile').value = ''; stravaUi();
     dlg.showModal();
@@ -1148,17 +1189,18 @@
   }
   async function importFile(file) {
     try {
-      $('impApply').disabled = true;
+      $('impApply').disabled = true; impMeta = null;
       $('impRoundRow').hidden = true; $('impRound').checked = false;
       const kind = await sniff(file);
       if (['fit', 'zip', 'tcx', 'gpx'].includes(kind)) {
         status('Aktivitéit gëtt gelies …');
-        entries = lapsToEntries(await parseActivity(file, kind));
+        const laps = await parseActivity(file, kind);
+        entries = lapsToEntries(laps); impMeta = laps.meta || null;
         $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
         $('impRoundRow').hidden = false;
         if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
         const n = entries.filter(x => x.type === 'rep').length;
-        status(`${entries.length} Runden aus der Aktivitéit, dovun ${n} Reps. W.e.gl. kontrolléieren.`);
+        status(`${entries.length} Runden aus der Aktivitéit, dovun ${n} Reps.${metaText(impMeta)} W.e.gl. kontrolléieren.`);
         renderPreview();
         return;
       }
@@ -1236,7 +1278,7 @@
     status('Aktivitéit auswielen.');
   }
   async function stravaLoad(id) {
-    status('Runde vu Strava ginn gelueden …');
+    status('Runde vu Strava ginn gelueden …'); impMeta = null;
     const [laps, streams] = await Promise.all([
       stravaApi(`activities/${id}/laps`),
       stravaApi(`activities/${id}/streams?keys=heartrate,time&key_by_type=true`).catch(() => ({}))
