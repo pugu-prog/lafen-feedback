@@ -328,7 +328,7 @@
   <label id="drop" for="impFile">
     <b>Foto oder Fichier heihinner zéien</b>
     <span>oder klicken fir ze wielen · Screenshot mat Cmd/Ctrl+V apechen</span>
-    <input type="file" id="impFile" accept="image/*,application/pdf,.fit,.tcx,.gpx,.zip">
+    <input type="file" id="impFile">
   </label>
   <div id="stravaBox" hidden>
     <button id="stravaBtn">Vu Strava lueden</button>
@@ -972,13 +972,26 @@
     throw new Error('Am ZIP ass keen FIT/TCX/GPX-Fichier.');
   }
 
-  async function parseActivity(file) {
-    let name = file.name.toLowerCase(), buf = await file.arrayBuffer();
-    if (name.endsWith('.zip')) ({ name, buf } = await unzipFirst(buf, /\.(fit|tcx|gpx)$/i)), name = name.toLowerCase();
-    if (name.endsWith('.fit')) return parseFIT(buf);
+  // what is in the file? (by content, so renamed files and missing extensions work too)
+  async function sniff(file) {
+    const b = new Uint8Array(await file.slice(0, 512).arrayBuffer()), str = new TextDecoder().decode(b);
+    if (b.length >= 12 && String.fromCharCode(b[8], b[9], b[10], b[11]) === '.FIT') return 'fit';
+    if (b[0] === 0x50 && b[1] === 0x4B) return 'zip';
+    if (str.startsWith('%PDF')) return 'pdf';
+    if (/TrainingCenterDatabase/i.test(str)) return 'tcx';
+    if (/<gpx/i.test(str)) return 'gpx';
+    if (/^\s*</.test(str)) return /\.tcx$/i.test(file.name) ? 'tcx' : 'gpx';
+    return 'image';
+  }
+  async function parseActivity(file, kind) {
+    let buf = await file.arrayBuffer();
+    if (kind === 'zip') {
+      const z = await unzipFirst(buf, /\.(fit|tcx|gpx)$/i);
+      buf = z.buf; kind = /\.fit$/i.test(z.name) ? 'fit' : /\.tcx$/i.test(z.name) ? 'tcx' : 'gpx';
+    }
+    if (kind === 'fit') return parseFIT(buf);
     const txt = new TextDecoder().decode(buf);
-    if (name.endsWith('.tcx')) return parseTCX(txt);
-    return parseGPX(txt);
+    return kind === 'tcx' ? parseTCX(txt) : parseGPX(txt);
   }
 
   // ---------- entries → sheet ----------
@@ -1137,9 +1150,10 @@
     try {
       $('impApply').disabled = true;
       $('impRoundRow').hidden = true; $('impRound').checked = false;
-      if (/\.(fit|tcx|gpx|zip)$/i.test(file.name)) {
+      const kind = await sniff(file);
+      if (['fit', 'zip', 'tcx', 'gpx'].includes(kind)) {
         status('Aktivitéit gëtt gelies …');
-        entries = lapsToEntries(await parseActivity(file));
+        entries = lapsToEntries(await parseActivity(file, kind));
         $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
         $('impRoundRow').hidden = false;
         if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
@@ -1149,7 +1163,7 @@
         return;
       }
       let text;
-      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) text = await pdfText(file);
+      if (kind === 'pdf') text = await pdfText(file);
       else { const url = URL.createObjectURL(file); try { text = await ocr(await prepImage(url)); } finally { URL.revokeObjectURL(url); } }
       $('impText').value = text;
       setMode(DAY.test(text.split('\n').find(l => DAY.test(l.trim())) || '') || /\d+\s*[x×]\s*[\d(]/.test(text) ? 'plan' : 'laps');
