@@ -972,7 +972,7 @@
   // Minimal FIT decoder: lap (19), record (20), session (18), activity (34), weather_conditions (128)
   const FIT_EPOCH = 631065600;                         // 1989-12-31T00:00:00Z
   function parseFIT(buf) {
-    const dv = new DataView(buf), laps = [], recs = [], meta = {};
+    const dv = new DataView(buf), laps = [], recs = [], evs = [], meta = {};
     let off = 0;
     while (off + 12 <= buf.byteLength) {
       const hs = dv.getUint8(off), size = dv.getUint32(off + 4, true);
@@ -1011,7 +1011,8 @@
         }
         p += def.devSize;
         if (v[253] != null) { lastTs = v[253]; ts = v[253]; }
-        if (def.g === 20 && v[3] != null && ts != null) recs.push({ ts, hr: v[3] });
+        if (def.g === 20 && ts != null && (v[3] != null || v[5] != null)) recs.push({ ts, hr: v[3], dist: v[5] != null ? v[5] / 100 : null });
+        if (def.g === 21 && v[0] === 0 && v[1] != null && ts != null) evs.push({ ts, type: v[1] });   // timer start / stop
         // start position (semicircles → degrees) for the weather lookup: first GPS record, else the session start
         if ((def.g === 20 && v[0] != null && v[1] != null) || (def.g === 18 && v[3] != null && v[4] != null)) {
           const [la, lo] = def.g === 20 ? [v[0], v[1]] : [v[3], v[4]];
@@ -1029,6 +1030,36 @@
     }
     if (!laps.length) throw new Error('Am FIT-Fichier si keng Runden.');
     meta.start ??= laps[0].start;
+    // watch stopped during the rests (e.g. Coros/Garmin pause button, laps every 1 km): the running stretches
+    // between timer stop and start are the reps, the stopped time is the pause
+    const segs = []; let on = null;
+    for (const e of evs) {
+      if (e.type === 0 && on == null) on = e.ts;
+      else if ([1, 4, 8, 9].includes(e.type) && on != null) { segs.push({ a: on, b: e.ts }); on = null; }
+    }
+    if (on != null) segs.push({ a: on, b: laps[laps.length - 1].end ?? on });
+    const run = segs.filter(x => x.b - x.a >= 20);
+    if (run.length >= 2) {
+      const out = [];
+      run.forEach((x, i) => {
+        // laps ending in this stretch (timer time, so hundredths and no stopped time); a few metres of standing are left out
+        const own = laps.filter(l => l.end != null && l.end > x.a && l.end <= x.b + 2 && !(l.d < 30));
+        const hr = recs.filter(r => r.ts >= x.a && r.ts <= x.b && r.hr > 0).map(r => r.hr);
+        const rd = recs.filter(r => r.ts >= x.a && r.ts <= x.b && r.dist != null);
+        out.push({ d: own.length ? own.reduce((a, l) => a + (l.d || 0), 0) : rd.length > 1 ? rd[rd.length - 1].dist - rd[0].dist : NaN,
+                   t: own.length ? own.reduce((a, l) => a + l.t, 0) : x.b - x.a,
+                   hrMax: hr.length ? Math.max(...hr) : undefined, kind: '' });
+        const nx = run[i + 1];
+        if (nx) {          // no data while stopped: the HR when running again is the lowest of the pause
+          const back = recs.find(r => r.ts >= nx.a && r.hr > 0);
+          out.push({ d: NaN, t: nx.a - x.b, hrMin: back ? back.hr : undefined, kind: 'pause' });
+        }
+      });
+      laps.splice(0, laps.length, ...out);
+      meta.stopped = true;
+      laps.meta = meta;
+      return laps;
+    }
     // intensity from structured workouts: 0 active, 1 rest, 2 warm-up, 3 cool-down, 4 recovery
     const useInt = laps.some(l => l.intensity === 1 || l.intensity === 4) && laps.some(l => l.intensity === 0 || l.intensity == null);
     for (const l of laps) {
@@ -1388,7 +1419,8 @@
         status('Aktivitéit gëtt gelies …');
         const laps = await parseActivity(file, kind);
         lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier';
-        impMeta = laps.meta || null; lapInfo = metaText(impMeta);
+        impMeta = laps.meta || null;
+        lapInfo = (impMeta?.stopped ? ' Auer war an de Pausen gestoppt: d\'Laf-Stécker sinn d\'Reps, Min HR Paus = HR beim Weiderlafen.' : '') + metaText(impMeta);
         $('impRoundRow').hidden = false;
         $('impRound').checked = /piste|track|bahn/i.test(S.surface);
         $('impRound').onchange({ target: $('impRound') });             // also runs combine()
