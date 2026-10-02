@@ -957,13 +957,16 @@
   };
   // laps [{d, t, hrAvg, hrMax, hrMin, kind}] (kind from the file: rep/pause/skip or '') → preview entries
   function lapsToEntries(laps) {
-    const auto = classify(laps);
+    const auto = classify(laps), types = laps.map((l, i) => l.kind || auto[i]);
+    // standing before the first / after the last rep is no pause of the session
+    const r0 = types.indexOf('rep'), r1 = types.lastIndexOf('rep');
+    types.forEach((t, i) => { if (t === 'pause' && (i < r0 || i > r1)) types[i] = 'skip'; });
     return laps.map((l, i) => {
-      const type = l.kind || auto[i];
+      const type = types[i];
       const hrRep = l.hrMax ?? l.hrAvg, hrPause = l.hrMin ?? l.hrAvg;
       const hr = type === 'pause' ? hrPause : hrRep;
       return E(type, { dist: isFinite(l.d) ? fmtNum(Math.round(l.d * 10) / 10) : '', time: fmtCs(l.t),
-        hr: hr != null ? String(Math.round(hr)) : '', gps: l.d,
+        hr: hr != null ? String(Math.round(hr)) : '', gps: l.d, stop: !!l.stop,
         hrs: [hrRep, hrPause].filter(v => v != null).map(Math.round) });
     });
   }
@@ -1035,46 +1038,93 @@
     }
     if (!laps.length) throw new Error('Am FIT-Fichier si keng Runden.');
     meta.start ??= laps[0].start;
-    // watch stopped during the rests (e.g. Coros/Garmin pause button, laps every 1 km): the running stretches
-    // between timer stop and start are the reps, the stopped time is the pause
-    const segs = []; let on = null;
+    // ---- pauses the laps do not show ----
+    // (1) timer stopped (pause button, ≥ 10 s) and (2) standing still inside a lap (rest without stopping the watch):
+    // both become a pause entry of their own; the running part keeps its timer time (hundredths)
+    const stops = []; let stopAt = null;
     for (const e of evs) {
-      if (e.type === 0 && on == null) on = e.ts;
-      else if ([1, 4, 8, 9].includes(e.type) && on != null) { segs.push({ a: on, b: e.ts }); on = null; }
+      if ([1, 4, 8, 9].includes(e.type)) { if (stopAt == null) stopAt = e.ts; }
+      else if (e.type === 0 && stopAt != null) { if (e.ts - stopAt >= 10) stops.push({ a: stopAt, b: e.ts }); stopAt = null; }
     }
-    if (on != null) segs.push({ a: on, b: laps[laps.length - 1].end ?? on });
-    const run = segs.filter(x => x.b - x.a >= 20);
-    if (run.length >= 2) {
-      const out = [];
-      run.forEach((x, i) => {
-        // laps ending in this stretch (timer time, so hundredths and no stopped time); a few metres of standing are left out
-        const own = laps.filter(l => l.end != null && l.end > x.a && l.end <= x.b + 2 && !(l.d < 30));
-        const hr = recs.filter(r => r.ts >= x.a && r.ts <= x.b && r.hr > 0).map(r => r.hr);
-        const rd = recs.filter(r => r.ts >= x.a && r.ts <= x.b && r.dist != null);
-        out.push({ d: own.length ? own.reduce((a, l) => a + (l.d || 0), 0) : rd.length > 1 ? rd[rd.length - 1].dist - rd[0].dist : NaN,
-                   t: own.length ? own.reduce((a, l) => a + l.t, 0) : x.b - x.a,
-                   hrMax: hr.length ? Math.max(...hr) : undefined, kind: '' });
-        const nx = run[i + 1];
-        if (nx) {          // no data while stopped: the HR when running again is the lowest of the pause
-          const back = recs.find(r => r.ts >= nx.a && r.hr > 0);
-          out.push({ d: NaN, t: nx.a - x.b, hrMin: back ? back.hr : undefined, kind: 'pause' });
-        }
-      });
-      laps.splice(0, laps.length, ...out);
-      meta.stopped = true;
-      laps.meta = meta;
-      return laps;
-    }
-    // intensity from structured workouts: 0 active, 1 rest, 2 warm-up, 3 cool-down, 4 recovery
-    const useInt = laps.some(l => l.intensity === 1 || l.intensity === 4) && laps.some(l => l.intensity === 0 || l.intensity == null);
-    for (const l of laps) {
-      if (recs.length && l.start != null && l.end != null) {
-        const r = hrRange(recs, l.start, l.end);
-        if (l.hrMin == null) l.hrMin = r.mn;
-        if (l.hrMax == null) l.hrMax = r.mx;
+    const R = recs.filter(r => r.dist != null);
+    const distAt = ts => { let d = null; for (const r of R) { if (r.ts > ts) break; d = r.dist; } return d; };
+    // first / last moment in [a, b] where the runner covers ≥ 12 m within 8 s (jogging or faster)
+    const moves = (i, j) => R[j].dist - R[i].dist >= 12;
+    function firstMove(a, b) {
+      for (let i = 0, j = 0; i < R.length; i++) {
+        if (R[i].ts < a) continue; if (R[i].ts > b) break;
+        if (j < i) j = i; while (j < R.length && R[j].ts < R[i].ts + 8) j++;
+        if (j < R.length && R[j].ts <= b + 8 && moves(i, j)) return R[i].ts;
       }
-      l.kind = !useInt ? '' : l.intensity === 1 || l.intensity === 4 ? 'pause' : l.intensity === 2 || l.intensity === 3 ? 'skip' : 'rep';
+      return null;
     }
+    function lastMove(a, b) {
+      for (let j = R.length - 1, i = j; j >= 0; j--) {
+        if (R[j].ts > b) continue; if (R[j].ts < a) break;
+        if (i > j) i = j; while (i >= 0 && R[i].ts > R[j].ts - 8) i--;
+        if (i >= 0 && R[i].ts >= a - 8 && moves(i, j)) return R[j].ts;
+      }
+      return null;
+    }
+    const hrIn = (a, b) => recs.filter(r => r.ts >= a && r.ts <= b && r.hr > 0).map(r => r.hr);
+    const hrBack = ts => (recs.find(r => r.ts >= ts && r.hr > 0) || {}).hr;
+    const useInt = laps.some(l => l.intensity === 1 || l.intensity === 4) && laps.some(l => l.intensity === 0 || l.intensity == null);
+    const out = [];
+    const pause = (t, a, b, back) => {          // HR: lowest recorded while resting, else the HR when running again
+      const h = hrIn(a, b);
+      out.push({ d: NaN, t, hrMin: h.length ? Math.min(...h) : hrBack(back), kind: 'pause', stop: true });
+    };
+    for (const l of laps) {
+      const intKind = !useInt ? '' : l.intensity === 1 || l.intensity === 4 ? 'pause' : l.intensity === 2 || l.intensity === 3 ? 'skip' : 'rep';
+      if (l.start == null || l.end == null || !R.length) {
+        const r = l.start != null && l.end != null ? hrRange(recs, l.start, l.end) : {};
+        out.push(Object.assign(l, { hrMin: l.hrMin ?? r.mn, hrMax: l.hrMax ?? r.mx, kind: intKind })); continue;
+      }
+      const st = stops.find(x => x.a >= l.start - 2 && x.a < l.end);
+      const runA = st ? st.b : l.start;
+      const mv = firstMove(runA, l.end);
+      if (mv == null) {                         // the whole lap is standing / walking: a pause
+        pause((st ? st.b - st.a : 0) + l.t, l.start, l.end, runA);
+        continue;
+      }
+      let lead = mv - runA, last = lastMove(mv, l.end) ?? l.end, trail = l.end - last;
+      if (lead < 20) lead = 0;
+      if (trail < 20) trail = 0;
+      const preT = (st ? st.b - st.a : 0) + lead;
+      if (preT > 0) pause(preT, st ? st.b : l.start, lead ? mv : runA, lead ? mv : runA);
+      const a = lead ? mv : runA, b = trail ? last : l.end;
+      let d = l.d;
+      if (lead || trail) { const d0 = distAt(a), d1 = distAt(b); if (d0 != null && d1 != null) d = d1 - d0; }
+      const h = hrIn(a, b);
+      out.push({ d, t: l.t - lead - trail, hrAvg: l.hrAvg, hrMax: h.length ? Math.max(...h) : l.hrMax,
+                 hrMin: h.length ? Math.min(...h) : l.hrMin, kind: intKind });
+      if (trail) pause(trail, last, l.end, l.end);
+    }
+    // a few metres of walking after the last stop (e.g. 6 m) are no lap
+    while (out.length && !(out[out.length - 1].kind === 'pause') && out[out.length - 1].d < 30) out.pop();
+    // a few seconds of moving right next to a pause (4 s, 0 m) belong to that pause
+    for (let i = out.length - 1; i >= 0; i--) {
+      const x = out[i], nb = out[i - 1]?.kind === 'pause' ? out[i - 1] : out[i + 1]?.kind === 'pause' ? out[i + 1] : null;
+      if (x.kind !== 'pause' && nb && x.t < 10 && !(x.d >= 20)) { nb.t += x.t; out.splice(i, 1); }
+    }
+    // interval with the watch stopped in the rests and laps every km (Coros/Garmin auto lap): 1000 m laps plus the
+    // rest lap between two pauses form one rep (1000 + 601 m = 1600 m), but only when there are several such stretches
+    const parts = []; let cur = [];
+    out.forEach(x => { if (x.kind === 'pause') { if (cur.length) parts.push(cur); cur = []; parts.push(x); } else cur.push(x); });
+    if (cur.length) parts.push(cur);
+    const auto = c => Array.isArray(c) && c.length >= 2 && c.slice(0, -1).every(x => Math.abs(x.d - 1000) < 0.6);
+    const runs = parts.filter(Array.isArray);
+    const merged = runs.length >= 2 && runs.filter(auto).length >= 2;
+    const res = [];
+    parts.forEach(c => {
+      if (!Array.isArray(c)) { res.push(c); return; }
+      if (merged && auto(c)) {
+        const hm = c.map(x => x.hrMax).filter(v => v != null);
+        res.push({ d: c.reduce((s, x) => s + (x.d || 0), 0), t: c.reduce((s, x) => s + x.t, 0), hrMax: hm.length ? Math.max(...hm) : undefined, kind: '' });
+      } else res.push(...c);
+    });
+    laps.splice(0, laps.length, ...res);
+    meta.stopped = stops.length > 0 || res.some(x => x.stop);
     laps.meta = meta;
     return laps;
   }
@@ -1288,27 +1338,50 @@
     $('impPlan').value = dayBlocks[i].lines.join('; ');
     combine();
   }
-  // plan reps → laps: each planned rep takes the next lap whose distance (or duration) is within 15 %
+  // plan reps → laps: each planned rep takes the next lap(s) whose distance (or duration) is within 15 % of the
+  // target; several laps without a pause in between can form one rep (auto lap 1000 m + 631 m = 8 min threshold).
+  // Where the plan has a pause after a rep (also "rof trabéieren" on hills), at least one lap lies in between.
   function mergePlan(laps, plan) {
-    const reps = plan.filter(e => e.type === 'rep').map(e => ({ d: metres(e.dist), t: secs(e.time), note: e.note }));
-    const L = laps.map(e => ({ e, d: isFinite(e.gps) ? e.gps : metres(e.dist), t: secs(e.time) }));
-    const fits = (l, r) => isFinite(r.d) ? l.d > 0 && Math.abs(l.d - r.d) / r.d <= 0.15
-                                          : isFinite(r.t) && l.t > 0 && Math.abs(l.t - r.t) / r.t <= 0.15;
-    const idx = []; let k = 0;
-    for (const r of reps) {
-      while (k < L.length && !fits(L[k], r)) k++;
-      if (k >= L.length) return { entries: null, found: idx.length };
-      idx.push(k++);
+    const steps = [];
+    plan.forEach(e => {
+      if (e.type === 'rep') steps.push({ d: metres(e.dist), t: secs(e.time), note: e.note, gap: false });
+      else if (e.type === 'pause' && steps.length) steps[steps.length - 1].gap = true;
+    });
+    const L = laps.map(e => ({ e, d: isFinite(e.gps) ? e.gps : metres(e.dist), t: secs(e.time), stop: e.stop }));
+    const groups = []; let k = 0;
+    for (const [s, r] of steps.entries()) {
+      const byD = isFinite(r.d), T = byD ? r.d : r.t;
+      if (!isFinite(T)) return { entries: null, found: groups.length };
+      let hit = null;
+      for (let i = k; i < L.length && !hit; i++) {
+        if (L[i].stop) continue;
+        let sum = 0;
+        for (let j = i; j < L.length && !L[j].stop; j++) {
+          sum += (byD ? L[j].d : L[j].t) || 0;
+          if (Math.abs(sum - T) / T <= 0.15) { hit = [i, j]; break; }
+          if (sum > T * 1.15) break;
+        }
+      }
+      if (!hit) return { entries: null, found: groups.length };
+      groups.push(hit);
+      k = hit[1] + 1 + (r.gap && s < steps.length - 1 ? 1 : 0);
     }
-    const first = idx[0], last = idx[idx.length - 1];
-    return { found: idx.length, entries: L.map((l, i) => {
-      const n = idx.indexOf(i), type = n >= 0 ? 'rep' : i > first && i < last ? 'pause' : 'skip';
-      const o = Object.assign({}, l.e, { type });
+    const first = groups[0][0], last = groups[groups.length - 1][1], out = [];
+    for (let i = 0; i < L.length; i++) {
+      const g = groups.findIndex(x => x[0] === i);
+      if (g >= 0) {                              // one rep from laps i … j
+        const [a, b] = groups[g], part = L.slice(a, b + 1), r = steps[g];
+        const hrs = part.flatMap(x => x.e.type === 'pause' ? [] : x.e.hrs.length ? [Math.max(...x.e.hrs)] : x.e.hr ? [+x.e.hr] : []);
+        const d = part.reduce((s, x) => s + (x.d || 0), 0), t = part.reduce((s, x) => s + (x.t || 0), 0);
+        out.push(E('rep', { dist: isFinite(r.d) ? fmtNum(r.d) : fmtNum(Math.round(d * 10) / 10), time: fmtCs(t),
+          hr: hrs.length ? String(Math.max(...hrs)) : '', hrs, note: r.note || '' }));
+        i = b; continue;
+      }
+      const type = i > first && i < last ? 'pause' : 'skip', o = Object.assign({}, L[i].e, { type });
       if (o.hrs.length) o.hr = String(type === 'pause' ? Math.min(...o.hrs) : Math.max(...o.hrs));
-      if (n >= 0 && isFinite(reps[n].d)) o.dist = fmtNum(reps[n].d);     // planned 1600 instead of GPS 1612
-      if (n >= 0 && reps[n].note) o.note = reps[n].note;
-      return o;
-    }) };
+      out.push(o);
+    }
+    return { found: groups.length, entries: out };
   }
   function combine() {
     const plan = parsePlan($('impPlan').value);
@@ -1425,7 +1498,7 @@
         const laps = await parseActivity(file, kind);
         lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier';
         impMeta = laps.meta || null;
-        lapInfo = (impMeta?.stopped ? ' Auer war an de Pausen gestoppt: d\'Laf-Stécker sinn d\'Reps, Min HR Paus = HR beim Weiderlafen.' : '') + metaText(impMeta);
+        lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
         $('impRoundRow').hidden = false;
         $('impRound').checked = /piste|track|bahn/i.test(S.surface);
         $('impRound').onchange({ target: $('impRound') });             // also runs combine()
