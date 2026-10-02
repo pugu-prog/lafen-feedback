@@ -1247,11 +1247,12 @@
 
   // ---------- entries → sheet ----------
   function applyEntries(list, training) {
-    const reps = [];
+    const reps = [], pd = new Map();       // metres covered in each pause (jog back down) → pause comment
     list.forEach(e => {
       if (e.type === 'rep') reps.push(Object.assign(blankRep(), { dist: e.dist, time: e.time, hr: e.hr, note: e.note }));
       else if (e.type === 'pause' && reps.length) {
-        const r = reps[reps.length - 1];
+        const r = reps[reps.length - 1], m = metres(e.dist);
+        if (isFinite(m) && m > 0) pd.set(r, { m: (pd.get(r)?.m || 0) + m, down: pd.get(r)?.down || /rof/i.test(e.note) });
         if (r.pTime || r.pHr) {          // two pauses in a row → one pause: times add up, lowest HR
           const a = secs(r.pTime), b = secs(e.time);
           if (isFinite(b)) r.pTime = fmtMS((isFinite(a) ? a : 0) + b);
@@ -1259,6 +1260,7 @@
         } else Object.assign(r, { pTime: e.time, pHr: e.hr, pNote: e.note });
       }
     });
+    pd.forEach((x, r) => { r.pNote = (x.down ? 'rof ' : '') + fmtNum(Math.round(x.m)) + ' m' + (x.down ? '' : ' getrabt'); });
     if (!reps.length) return false;
     S.reps = reps;
     if (training) S.training = training;                       // plan import: the plan names the session
@@ -1344,8 +1346,8 @@
   function mergePlan(laps, plan) {
     const steps = [];
     plan.forEach(e => {
-      if (e.type === 'rep') steps.push({ d: metres(e.dist), t: secs(e.time), note: e.note, gap: false });
-      else if (e.type === 'pause' && steps.length) steps[steps.length - 1].gap = true;
+      if (e.type === 'rep') steps.push({ d: metres(e.dist), t: secs(e.time), note: e.note, gap: false, down: HILL.test(e.note || '') });
+      else if (e.type === 'pause' && steps.length) { const st = steps[steps.length - 1]; st.gap = true; st.down ||= /rof/i.test(e.note); }
     });
     const L = laps.map(e => ({ e, d: isFinite(e.gps) ? e.gps : metres(e.dist), t: secs(e.time), stop: e.stop }));
     const groups = []; let k = 0;
@@ -1378,6 +1380,8 @@
         i = b; continue;
       }
       const type = i > first && i < last ? 'pause' : 'skip', o = Object.assign({}, L[i].e, { type });
+      const prev = groups.findLastIndex(x => x[1] < i);       // hills: the lap after a rep is the jog back down
+      if (type === 'pause' && prev >= 0 && steps[prev].down && isFinite(L[i].d) && !o.note) o.note = 'rof';
       if (o.hrs.length) o.hr = String(type === 'pause' ? Math.min(...o.hrs) : Math.max(...o.hrs));
       out.push(o);
     }
