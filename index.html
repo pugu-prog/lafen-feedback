@@ -1451,12 +1451,25 @@
     e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
     const fs = [...e.dataTransfer.files]; if (fs.length) openWith(fs);
   });
+  // paste: screenshots arrive as images. A copied FIT file usually arrives only as its name (plus a file icon
+  // as picture): browsers hand over images and text, the file itself only in some (Chrome on a computer).
   document.addEventListener('paste', e => {
-    const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file');
-    if (!item) return;                                   // normal text paste stays untouched
+    const cd = e.clipboardData; if (!cd) return;
+    const txt = (cd.getData('text/plain') || '').trim();
+    const isName = /\.(fit|tcx|gpx|zip)$/i.test(txt);
+    let files = [...(cd.files || [])];
+    if (!files.length) files = [...(cd.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+    files = files.filter(f => !(isName && /^image\//.test(f.type)));      // the icon of a copied file is no screenshot
+    if (!files.length) {
+      if (isName) {
+        e.preventDefault();
+        if (!dlg.open) $('btnImport').onclick();
+        status('Den Browser gëtt beim Apechen just den Numm vum Fichier weider, net de Fichier selwer. W.e.gl. de FIT-Fichier an d\'Feld zéien oder op „Fotoen oder Fichieren …“ klicken a wielen.', true);
+      }
+      return;                                            // normal text paste stays untouched
+    }
     e.preventDefault();
-    const f = item.getAsFile();
-    openWith([new File([f], f.name && f.name !== 'image.png' ? f.name : 'screenshot.png', { type: f.type })]);
+    openWith(files.map(f => new File([f], f.name && f.name !== 'image.png' ? f.name : 'screenshot.png', { type: f.type })));
   });
 
   // ================= Strava (OAuth via a small Cloudflare Worker that keeps the client secret) =================
