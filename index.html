@@ -726,8 +726,13 @@
     catch { alert('Fichier konnt net gelies ginn.'); }
     e.target.value = '';
   };
-  // suggested PDF file name = page title = "260930 Guy -- Piste -- 4x1600" (like the Excel), set in calc()
-  $('btnPdf').onclick = () => window.print();
+  // suggested PDF file name = page title = "260930 Guy -- Piste -- 4x1600" (like the Excel), set in calc().
+  // Inside the SauerBeen app (WebView) window.print() does nothing: the app prints natively with the print CSS.
+  $('btnPdf').onclick = () => {
+    if (window.webkit?.messageHandlers?.sauerbeenPrint) window.webkit.messageHandlers.sauerbeenPrint.postMessage(document.title);
+    else if (window.SauerBeenApp?.print) window.SauerBeenApp.print(document.title);
+    else window.print();
+  };
 
 
   // ================= Import from screenshot / photo / plan (image or PDF) =================
@@ -1688,6 +1693,14 @@
   }
   fetch(SHOES_URL).then(r => r.ok ? r.json() : {}).then(j => { SHOES = j.brands || {}; }).catch(() => {}).finally(initShoes);
   window.lafenImport = { importFile, parsePlan, parseLaps, parseFIT, evaluate, mergePlan, combine };   // for testing
+  // for the SauerBeen app: a FIT/TCX/GPX/ZIP file shared to the app is handed over as base64 → import dialog
+  window.SauerBeen = {
+    importFile(base64, name = 'aktivitaet.fit') {
+      const bin = atob(base64), u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return openWith([new File([u], name)]);
+    }
+  };
 
   fillMeta(); buildRows(); calc(); showTimes(); maybeWeather();
 })();
