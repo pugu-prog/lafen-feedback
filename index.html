@@ -371,9 +371,9 @@
     Soss: Screenshot vun der Auer-App (Runden), Foto vum Auer-Display oder Trainingsplang als Bild/PDF.
     D'Erkennung leeft hei um Apparat; d'Bild gëtt net eropgelueden. Ëmmer kontrolléieren, ier een iwwerhëlt.</p>
   <label id="drop" for="impFile">
-    <b>Foto oder Fichier heihinner zéien</b>
-    <span>oder klicken fir ze wielen · Screenshot mat Cmd/Ctrl+V apechen</span>
-    <input type="file" id="impFile">
+    <b>Fotoen oder Fichieren heihinner zéien</b>
+    <span>och e puer zesummen, z.B. Trainingsplang + FIT-Datei · oder klicken · Screenshot mat Cmd/Ctrl+V apechen</span>
+    <input type="file" id="impFile" multiple>
   </label>
   <div id="stravaBox" hidden>
     <button id="stravaBtn">Vu Strava lueden</button>
@@ -387,6 +387,10 @@
     <label><input type="radio" name="impMode" value="plan"> Trainingsplang (Reps virbereeden)</label>
   </div>
   <div id="impDays"></div>
+  <div class="row">
+    <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Virgab</b></label>
+    <input id="impPlan" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
+  </div>
   <details>
     <summary>Schreifweis fir Trainingspläng</summary>
     <div class="hint" style="margin:6px 0 0">
@@ -669,6 +673,8 @@
   // Enter → next input (quick entry on a phone/keyboard)
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    if (e.target.id === 'impPlan') { e.preventDefault(); combine(); return; }
+    if (!e.target.closest('.sheet')) return;
     e.preventDefault();
     const all = [...document.querySelectorAll('.sheet input:not([type=file])')];
     const n = all[all.indexOf(e.target) + 1];
@@ -1210,10 +1216,16 @@
     if (ent.hrs.length) { ent.hr = String(ent.type === 'pause' ? Math.min(...ent.hrs) : Math.max(...ent.hrs)); tr.querySelector('[data-p=hr]').value = ent.hr; }
     renderPreview();
   });
+  // two sources can be combined: the plan (field "Virgab": what was planned) and the laps (watch file, Strava or
+  // lap screenshot: what was measured). With both, the plan decides which laps are reps; laps in between are the pause.
+  let lapSlot = null, lapSrc = '', lapInfo = '';
+  const hasXPlan = t => /\d\s*[x×]\s*[\d(]/i.test(t || '');
   function evaluate() {
     const text = $('impText').value;
-    $('impDays').innerHTML = ''; planDate = '';
+    if (!text.trim()) { combine(); return; }          // nothing typed: keep what was loaded (FIT laps stay)
+    $('impDays').innerHTML = '';
     if (mode() === 'plan') {
+      planDate = '';
       dayBlocks = splitDays(text);
       if (dayBlocks.length > 1) {
         $('impDays').innerHTML = '<b style="align-self:center">Dag:</b>' + dayBlocks.map((b, i) => {
@@ -1226,31 +1238,81 @@
         pickDay(best);
         return;
       }
-      const r = parsePlan(text); entries = r.entries; planSummary = r.summary;
-      status(entries.length ? `Plang gelies: ${r.summary}. W.e.gl. kontrolléieren.` + unreadText(r.unread) : 'Keng Reps am Text fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length || r.unread.length > 0);
+      if (dayBlocks.length === 1) { pickDay(0); return; }          // one day named → its date too
+      $('impPlan').value = text.split('\n').map(l => l.trim()).filter(Boolean).join('; ');
     } else {
-      entries = parseLaps(text); planSummary = '';
-      status(entries.length ? `${entries.length} Runde fonnt. Typ (Rep/Paus) a Wäerter w.e.gl. kontrolléieren.` : 'Keng Runde mat Zäiten fonnt. Text ënnen verbesseren oder Modus wiesselen.', !entries.length);
+      lapSlot = parseLaps(text); lapSrc = 'Screenshot'; lapInfo = '';
     }
-    renderPreview();
+    combine();
   }
-  const unreadText = u => u.length ? ` Net verstan: „${u.join('“, „')}“ – Text ënnen verbesseren an „Nei auswäerten“.` : '';
+  const unreadText = u => u.length ? ` Net verstan: „${u.join('“, „')}“ – Virgab verbesseren.` : '';
   function pickDay(i) {
     $('impDays').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
-    const r = parsePlan(dayBlocks[i].lines.join('\n'));
-    entries = r.entries; planSummary = r.summary; planDate = dateOfDay(dayBlocks[i].day);
+    planDate = dateOfDay(dayBlocks[i].day);
+    $('impPlan').value = dayBlocks[i].lines.join('; ');
+    combine();
+  }
+  // plan reps → laps: each planned rep takes the next lap whose distance (or duration) is within 15 %
+  function mergePlan(laps, plan) {
+    const reps = plan.filter(e => e.type === 'rep').map(e => ({ d: metres(e.dist), t: secs(e.time), note: e.note }));
+    const L = laps.map(e => ({ e, d: isFinite(e.gps) ? e.gps : metres(e.dist), t: secs(e.time) }));
+    const fits = (l, r) => isFinite(r.d) ? l.d > 0 && Math.abs(l.d - r.d) / r.d <= 0.15
+                                          : isFinite(r.t) && l.t > 0 && Math.abs(l.t - r.t) / r.t <= 0.15;
+    const idx = []; let k = 0;
+    for (const r of reps) {
+      while (k < L.length && !fits(L[k], r)) k++;
+      if (k >= L.length) return { entries: null, found: idx.length };
+      idx.push(k++);
+    }
+    const first = idx[0], last = idx[idx.length - 1];
+    return { found: idx.length, entries: L.map((l, i) => {
+      const n = idx.indexOf(i), type = n >= 0 ? 'rep' : i > first && i < last ? 'pause' : 'skip';
+      const o = Object.assign({}, l.e, { type });
+      if (o.hrs.length) o.hr = String(type === 'pause' ? Math.min(...o.hrs) : Math.max(...o.hrs));
+      if (n >= 0 && isFinite(reps[n].d)) o.dist = fmtNum(reps[n].d);     // planned 1600 instead of GPS 1612
+      if (n >= 0 && reps[n].note) o.note = reps[n].note;
+      return o;
+    }) };
+  }
+  function combine() {
+    const plan = parsePlan($('impPlan').value);
+    const nPlan = plan.entries.filter(e => e.type === 'rep').length;
+    planSummary = plan.summary;
     const dTxt = planDate ? ` Datum: ${planDate.split('-').reverse().join('.')}.` : '';
-    status(`${dayBlocks[i].day}: ${entries.filter(e => e.type === 'rep').length} Reps.${dTxt} W.e.gl. kontrolléieren.` + unreadText(r.unread), r.unread.length > 0);
+    let msg = '', err = plan.unread.length > 0;
+    if (lapSlot) {
+      const copy = () => lapSlot.map(e => Object.assign({}, e));
+      const auto = `${lapSrc}: ${lapSlot.length} Runden`;
+      if (nPlan) {
+        const m = mergePlan(lapSlot, plan.entries);
+        if (m.entries) { entries = m.entries; msg = `${auto}. Virgab „${plan.summary}“: ${nPlan} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
+        else { entries = copy(); err = true;
+               msg = `${auto}. D'Virgab „${plan.summary}“ passt net op d'Runden (${m.found} vu ${nPlan} Reps fonnt), dofir automatesch Erkennung. Virgab verbesseren oder eidel maachen.`; }
+      } else {
+        entries = copy();
+        msg = `${auto}, dovun ${entries.filter(e => e.type === 'rep').length} Reps (automatesch erkannt). Méi sécher mat enger Virgab, z.B. „4x1600 (60s)“.`;
+      }
+      msg += lapInfo + dTxt;
+    } else if (nPlan) {
+      entries = plan.entries;
+      msg = `Plang: ${plan.summary} (${nPlan} Reps).${dTxt} Fir d'Zäiten kann een elo nach d'FIT-Datei oder e Screenshot vun der Auer derbäi zéien.`;
+    } else {
+      entries = [];
+      if ($('impPlan').value.trim()) { msg = 'Keng Reps an der Virgab fonnt.'; err = true; }
+    }
+    if (msg || err) status(msg + unreadText(plan.unread) + (entries.length ? ' W.e.gl. kontrolléieren.' : ''), err);
     renderPreview();
   }
+  let planTimer = 0;
+  $('impPlan').addEventListener('input', () => { clearTimeout(planTimer); planTimer = setTimeout(combine, 500); });
   // track reps: GPS distance → nearest 100 m when within 5 % (1612 m → 1600 m)
   $('impRound').onchange = e => {
-    entries.forEach(en => {
+    (lapSlot || []).forEach(en => {
       if (en.type !== 'rep' || !isFinite(en.gps)) return;
       const r = Math.round(en.gps / 100) * 100;
       en.dist = fmtNum(e.target.checked && r > 0 && Math.abs(r - en.gps) / en.gps < 0.05 ? r : Math.round(en.gps * 10) / 10);
     });
-    renderPreview();
+    combine();
   };
   $('impDays').addEventListener('click', e => { if (e.target.dataset.d !== undefined) pickDay(+e.target.dataset.d); });
   document.querySelectorAll('input[name=impMode]').forEach(r => r.onchange = evaluate);
@@ -1258,10 +1320,15 @@
   $('impCancel').onclick = () => dlg.close();
   $('impApply').onclick = () => {
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    if (applyEntries(entries, mode() === 'plan' ? planSummary : null)) dlg.close();
+    // the plan names the session, unless it is just what already stands in "Training"
+    const pv = $('impPlan').value.trim();
+    if (applyEntries(entries, pv && pv !== String(S.training || '').trim() ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
-    entries = []; impMeta = null; planDate = ''; renderPreview(); status(''); $('impDays').innerHTML = '';
+    entries = []; impMeta = null; planDate = ''; lapSlot = null; lapInfo = ''; status(''); $('impDays').innerHTML = '';
+    $('impText').value = '';
+    $('impPlan').value = hasXPlan(S.training) ? S.training : '';     // "4x1600 (60s)" already typed → used as plan
+    renderPreview();
     $('impRoundRow').hidden = true; $('impRound').checked = false;
     $('impFile').value = ''; stravaUi();
     dlg.showModal();
@@ -1315,19 +1382,16 @@
   }
   async function importFile(file) {
     try {
-      $('impApply').disabled = true; impMeta = null;
-      $('impRoundRow').hidden = true; $('impRound').checked = false;
+      $('impApply').disabled = true;
       const kind = await sniff(file);
       if (['fit', 'zip', 'tcx', 'gpx'].includes(kind)) {
         status('Aktivitéit gëtt gelies …');
         const laps = await parseActivity(file, kind);
-        entries = lapsToEntries(laps); impMeta = laps.meta || null;
-        $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
+        lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier';
+        impMeta = laps.meta || null; lapInfo = metaText(impMeta);
         $('impRoundRow').hidden = false;
-        if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
-        const n = entries.filter(x => x.type === 'rep').length;
-        status(`${entries.length} Runden aus der Aktivitéit, dovun ${n} Reps.${metaText(impMeta)} W.e.gl. kontrolléieren.`);
-        renderPreview();
+        $('impRound').checked = /piste|track|bahn/i.test(S.surface);
+        $('impRound').onchange({ target: $('impRound') });             // also runs combine()
         return;
       }
       let text;
@@ -1338,9 +1402,13 @@
       evaluate();
     } catch (err) { status(err.message || String(err), true); }
   }
-  $('impFile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); };
+  // several files at once (plan + watch data): one after the other, each fills its part
+  const openWith = async files => {
+    if (!dlg.open) $('btnImport').onclick();
+    for (const f of files) await importFile(f);
+  };
+  $('impFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) openWith(fs); };
   // drag & drop anywhere on the page (or onto the drop zone) and paste (Cmd/Ctrl+V) of a screenshot
-  const openWith = f => { if (!dlg.open) $('btnImport').onclick(); importFile(f); };
   const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
   let dragDepth = 0;
   document.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; document.body.classList.add('dragging'); } });
@@ -1349,14 +1417,14 @@
   document.addEventListener('drop', e => {
     if (!hasFiles(e)) return;
     e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
-    const f = e.dataTransfer.files[0]; if (f) openWith(f);
+    const fs = [...e.dataTransfer.files]; if (fs.length) openWith(fs);
   });
   document.addEventListener('paste', e => {
     const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file');
     if (!item) return;                                   // normal text paste stays untouched
     e.preventDefault();
     const f = item.getAsFile();
-    openWith(new File([f], f.name && f.name !== 'image.png' ? f.name : 'screenshot.png', { type: f.type }));
+    openWith([new File([f], f.name && f.name !== 'image.png' ? f.name : 'screenshot.png', { type: f.type })]);
   });
 
   // ================= Strava (OAuth via a small Cloudflare Worker that keeps the client secret) =================
@@ -1418,15 +1486,13 @@
                hrMin: seg.length ? Math.min(...seg) : undefined, kind: '' };
     });
     if (!list.length) throw new Error('Dës Aktivitéit huet keng Runden.');
-    entries = lapsToEntries(list);
+    lapSlot = lapsToEntries(list); lapSrc = 'Strava'; lapInfo = ' Strava gëtt Zäite just op d\'Sekonn.';
     const a = stravaActs.find(x => String(x.id) === String(id));
     if (a) impMeta = { start: Date.parse(a.start_date) / 1000 - FIT_EPOCH, tzOffset: (Date.parse(a.start_date_local) - Date.parse(a.start_date)) / 1000,
                        lat: a.start_latlng?.[0], lon: a.start_latlng?.[1] };
-    $('impText').value = ''; $('impDays').innerHTML = ''; planSummary = ''; setMode('laps');
-    $('impRoundRow').hidden = false; $('impRound').checked = false;
-    if (/piste|track|bahn/i.test(S.surface)) { $('impRound').checked = true; $('impRound').onchange({ target: $('impRound') }); }
-    status(`${entries.length} Runden vu Strava, dovun ${entries.filter(x => x.type === 'rep').length} Reps. Strava gëtt Zäite just op d'Sekonn. W.e.gl. kontrolléieren.`);
-    renderPreview();
+    $('impRoundRow').hidden = false;
+    $('impRound').checked = /piste|track|bahn/i.test(S.surface);
+    $('impRound').onchange({ target: $('impRound') });               // also runs combine()
   }
   function stravaUi() {
     $('stravaBox').hidden = !stravaOn;
@@ -1576,7 +1642,7 @@
     fillModels(); renderRack();
   }
   fetch(SHOES_URL).then(r => r.ok ? r.json() : {}).then(j => { SHOES = j.brands || {}; }).catch(() => {}).finally(initShoes);
-  window.lafenImport = { importFile, parsePlan, parseLaps, parseFIT, evaluate };   // for testing
+  window.lafenImport = { importFile, parsePlan, parseLaps, parseFIT, evaluate, mergePlan, combine };   // for testing
 
   fillMeta(); buildRows(); calc(); showTimes(); maybeWeather();
 })();
