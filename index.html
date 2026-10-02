@@ -184,13 +184,20 @@
   #impPrev tr.t-pause td:first-child { background: #fbf3d9; }
   #impPrev tr.t-skip td { color: #999; }
   #impPrev tr.t-skip input { color: #999; text-decoration: line-through; }
-  #drop {
-    display: grid; gap: 2px; place-items: center; text-align: center; cursor: pointer;
-    border: 2px dashed var(--input-line); border-radius: 8px; background: #f3f8fd; padding: 18px 12px; margin: 8px 0;
+  .zones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+  @media (max-width: 560px) { .zones { grid-template-columns: 1fr; } }
+  .zone {
+    display: grid; gap: 2px; place-items: center; align-content: center; text-align: center; cursor: pointer; position: relative;
+    border: 2px dashed var(--input-line); border-radius: 8px; background: #f3f8fd; padding: 14px 10px; min-height: 96px;
   }
-  #drop span { font-size: 12px; color: var(--muted); }
-  #drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-  #drop.over, body.dragging #drop { border-color: var(--sb-blue); background: #e3e8f8; }
+  .zone b { color: var(--sb-blue); }
+  .zone span { font-size: 12px; color: var(--muted); }
+  .zone .got { color: #1d7a3a; font-weight: 600; font-size: 12px; }
+  .zone .got:empty { display: none; }
+  .zone.has { border-style: solid; border-color: #63be7b; background: #eef8f1; }
+  .zone input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  body.dragging .zone { border-color: var(--sb-blue); background: #e3e8f8; }
+  .zone.over { border-color: var(--sb-blue); background: #d3dcf6; border-style: solid; }
   #dropAll {
     position: fixed; inset: 0; z-index: 50; display: none; place-items: center;
     background: rgba(41,61,150,.15); border: 4px dashed var(--sb-blue); font: 900 24px "Titillium Web", Inter, sans-serif; color: var(--sb-blue);
@@ -367,28 +374,31 @@
 
 <dialog id="imp" aria-labelledby="impTitle">
   <h2 id="impTitle">Training importéieren</h2>
-  <p class="hint">Am beschten: Aktivitéit als <b>FIT</b>, TCX oder GPX exportéieren (Garmin, Coros, Strava) – dat ass exakt.
-    Soss: Screenshot vun der Auer-App (Runden), Foto vum Auer-Display oder Trainingsplang als Bild/PDF.
-    D'Erkennung leeft hei um Apparat; d'Bild gëtt net eropgelueden. Ëmmer kontrolléieren, ier een iwwerhëlt.</p>
-  <label id="drop" for="impFile">
-    <b>Fotoen oder Fichieren heihinner zéien</b>
-    <span>och e puer zesummen, z.B. Trainingsplang + FIT-Datei · oder klicken · Screenshot mat Cmd/Ctrl+V apechen</span>
-    <input type="file" id="impFile" multiple>
-  </label>
+  <p class="hint">Zwee Deeler: <b>1</b> wat geplangt war, <b>2</b> wat gelaf gouf. Mat béidem fënnt d'Tool d'Reps am sécherschten
+    (bei Hills ëmmer de Plang derbäi). D'Biller ginn hei um Apparat gelies, näischt gëtt eropgelueden. Ëmmer kontrolléieren, ier een iwwerhëlt.</p>
+  <div class="zones">
+    <label class="zone" id="zPlan" for="impFilePlan">
+      <b>1 · Plang</b>
+      <span>Screenshot, Foto oder PDF vum Training</span>
+      <span class="got" id="gotPlan"></span>
+      <input type="file" id="impFilePlan" accept="image/*,.pdf,application/pdf">
+    </label>
+    <label class="zone" id="zLaps" for="impFileLaps">
+      <b>2 · Resultat vun der Auer</b>
+      <span>FIT-Datei (Coros, Garmin …), soss Screenshot vun de Ronnen</span>
+      <span class="got" id="gotLaps"></span>
+      <input type="file" id="impFileLaps">
+    </label>
+  </div>
   <div id="stravaBox" hidden>
     <button id="stravaBtn">Vu Strava lueden</button>
     <button id="stravaOff" hidden>Strava trennen</button>
     <div id="stravaList"></div>
   </div>
   <div id="impStatus" role="status"></div>
-  <div class="row" id="impModeRow">
-    <b>Wat ass et?</b>
-    <label><input type="radio" name="impMode" value="laps" checked> Runden vun der Auer (Resultater)</label>
-    <label><input type="radio" name="impMode" value="plan"> Trainingsplang (Reps virbereeden)</label>
-  </div>
   <div id="impDays"></div>
   <div class="row">
-    <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Virgab</b></label>
+    <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Plang als Text</b></label>
     <input id="impPlan" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
   </div>
   <details>
@@ -406,7 +416,12 @@
   <details id="impTextBox">
     <summary>Erkannten Text weisen / verbesseren (oder Text hei apechen)</summary>
     <textarea id="impText" spellcheck="false" placeholder="z.B. 4km&#10;12x600m (45s)&#10;2km"></textarea>
-    <div class="row"><button id="impReparse">Nei auswäerten</button></div>
+    <div class="row" id="impModeRow">
+      <b>Den Text ass:</b>
+      <label><input type="radio" name="impMode" value="plan"> de Plang</label>
+      <label><input type="radio" name="impMode" value="laps" checked> d'Ronnen vun der Auer</label>
+      <button id="impReparse">Nei auswäerten</button>
+    </div>
   </details>
   <div class="row" id="impRoundRow" hidden>
     <label><input type="checkbox" id="impRound" style="width:auto"> GPS-Distanz vun de Reps op déi ronn Distanz setzen (Piste: 1612 m → 1600 m)</label>
@@ -1304,9 +1319,9 @@
     if (ent.hrs.length) { ent.hr = String(ent.type === 'pause' ? Math.min(...ent.hrs) : Math.max(...ent.hrs)); tr.querySelector('[data-p=hr]').value = ent.hr; }
     renderPreview();
   });
-  // two sources can be combined: the plan (field "Virgab": what was planned) and the laps (watch file, Strava or
+  // two sources can be combined: the plan (part 1 / field "Plang als Text": what was planned) and the laps (watch file, Strava or
   // lap screenshot: what was measured). With both, the plan decides which laps are reps; laps in between are the pause.
-  let lapSlot = null, lapSrc = '', lapInfo = '';
+  let lapSlot = null, lapSrc = '', lapInfo = '', lapName = '', planName = '';
   const hasXPlan = t => /\d\s*[x×]\s*[\d(]/i.test(t || '');
   function evaluate() {
     const text = $('impText').value;
@@ -1329,11 +1344,11 @@
       if (dayBlocks.length === 1) { pickDay(0); return; }          // one day named → its date too
       $('impPlan').value = text.split('\n').map(l => l.trim()).filter(Boolean).join('; ');
     } else {
-      lapSlot = parseLaps(text); lapSrc = 'Screenshot'; lapInfo = '';
+      lapSlot = parseLaps(text); lapSrc = 'Screenshot'; lapInfo = ''; lapName ||= 'Screenshot';
     }
     combine();
   }
-  const unreadText = u => u.length ? ` Net verstan: „${u.join('“, „')}“ – Virgab verbesseren.` : '';
+  const unreadText = u => u.length ? ` Net verstan: „${u.join('“, „')}“ – Plang verbesseren.` : '';
   function pickDay(i) {
     $('impDays').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
     planDate = dateOfDay(dayBlocks[i].day);
@@ -1398,12 +1413,12 @@
       const auto = `${lapSrc}: ${lapSlot.length} Runden`;
       if (nPlan) {
         const m = mergePlan(lapSlot, plan.entries);
-        if (m.entries) { entries = m.entries; msg = `${auto}. Virgab „${plan.summary}“: ${nPlan} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
+        if (m.entries) { entries = m.entries; msg = `${auto}. Plang „${plan.summary}“: ${nPlan} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
         else { entries = copy(); err = true;
-               msg = `${auto}. D'Virgab „${plan.summary}“ passt net op d'Runden (${m.found} vu ${nPlan} Reps fonnt), dofir automatesch Erkennung. Virgab verbesseren oder eidel maachen.`; }
+               msg = `${auto}. De Plang „${plan.summary}“ passt net op d'Runden (${m.found} vu ${nPlan} Reps fonnt), dofir automatesch Erkennung. Plang verbesseren oder eidel maachen.`; }
       } else {
         entries = copy();
-        msg = `${auto}, dovun ${entries.filter(e => e.type === 'rep').length} Reps (automatesch erkannt). Méi sécher mat enger Virgab, z.B. „4x1600 (60s)“.`;
+        msg = `${auto}, dovun ${entries.filter(e => e.type === 'rep').length} Reps (automatesch erkannt). Méi sécher mam Plang derbäi (Feld 1 oder als Text, z.B. „4x1600 (60s)“); bei Hills ëmmer.`;
       }
       msg += lapInfo + dTxt;
     } else if (nPlan) {
@@ -1411,9 +1426,13 @@
       msg = `Plang: ${plan.summary} (${nPlan} Reps).${dTxt} Fir d'Zäiten kann een elo nach d'FIT-Datei oder e Screenshot vun der Auer derbäi zéien.`;
     } else {
       entries = [];
-      if ($('impPlan').value.trim()) { msg = 'Keng Reps an der Virgab fonnt.'; err = true; }
+      if ($('impPlan').value.trim()) { msg = 'Keng Reps am Plang fonnt.'; err = true; }
     }
     if (msg || err) status(msg + unreadText(plan.unread) + (entries.length ? ' W.e.gl. kontrolléieren.' : ''), err);
+    // what each of the two parts holds
+    $('gotPlan').textContent = nPlan ? '✓ ' + (planName ? planName + ': ' : '') + plan.summary : planName ? planName + ': keng Reps fonnt' : '';
+    $('gotLaps').textContent = lapSlot ? `✓ ${lapName || lapSrc} · ${lapSlot.length} Ronnen` : '';
+    $('zPlan').classList.toggle('has', !!nPlan); $('zLaps').classList.toggle('has', !!lapSlot);
     renderPreview();
   }
   let planTimer = 0;
@@ -1435,15 +1454,17 @@
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
     // the plan names the session, unless it is just what already stands in "Training"
     const pv = $('impPlan').value.trim();
-    if (applyEntries(entries, pv && pv !== String(S.training || '').trim() ? planSummary : null)) dlg.close();
+    if (applyEntries(entries, pv && pv !== String(S.training || '').trim().replace(/\s+\+\s+/g, '; ') ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
-    entries = []; impMeta = null; planDate = ''; lapSlot = null; lapInfo = ''; status(''); $('impDays').innerHTML = '';
+    entries = []; impMeta = null; planDate = ''; lapSlot = null; lapInfo = ''; lapName = ''; planName = ''; status(''); $('impDays').innerHTML = '';
+    $('gotPlan').textContent = $('gotLaps').textContent = ''; $('zPlan').classList.remove('has'); $('zLaps').classList.remove('has');
     $('impText').value = '';
-    $('impPlan').value = hasXPlan(S.training) ? S.training : '';     // "4x1600 (60s)" already typed → used as plan
+    // "4x1600 (60s)" already typed → used as plan; "5x60s hills + 8min threshold" (summary of an earlier import) = several steps
+    $('impPlan').value = hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
     renderPreview();
     $('impRoundRow').hidden = true; $('impRound').checked = false;
-    $('impFile').value = ''; stravaUi();
+    $('impFilePlan').value = $('impFileLaps').value = ''; stravaUi();
     dlg.showModal();
   };
 
@@ -1493,14 +1514,15 @@
     }
     return text;
   }
-  async function importFile(file) {
+  // slot: 'plan' / 'laps' when dropped on (or picked in) one of the two parts, else recognised from the content
+  async function importFile(file, slot) {
     try {
       $('impApply').disabled = true;
       const kind = await sniff(file);
       if (['fit', 'zip', 'tcx', 'gpx'].includes(kind)) {
         status('Aktivitéit gëtt gelies …');
         const laps = await parseActivity(file, kind);
-        lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier';
+        lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier'; lapName = file.name || lapSrc;
         impMeta = laps.meta || null;
         lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
         $('impRoundRow').hidden = false;
@@ -1512,16 +1534,28 @@
       if (kind === 'pdf') text = await pdfText(file);
       else { const url = URL.createObjectURL(file); try { text = await ocr(await prepImage(url)); } finally { URL.revokeObjectURL(url); } }
       $('impText').value = text;
-      setMode(DAY.test(text.split('\n').find(l => DAY.test(l.trim())) || '') || /\d+\s*[x×]\s*[\d(]/.test(text) ? 'plan' : 'laps');
+      const m = slot || (DAY.test(text.split('\n').find(l => DAY.test(l.trim())) || '') || /\d+\s*[x×]\s*[\d(]/.test(text) ? 'plan' : 'laps');
+      setMode(m);
+      if (m === 'plan') planName = /^screenshot/i.test(file.name) ? 'Screenshot' : file.name; else lapName = /^screenshot/i.test(file.name) ? 'Screenshot' : file.name;
       evaluate();
     } catch (err) { status(err.message || String(err), true); }
   }
   // several files at once (plan + watch data): one after the other, each fills its part
-  const openWith = async files => {
+  const openWith = async (files, slot) => {
     if (!dlg.open) $('btnImport').onclick();
-    for (const f of files) await importFile(f);
+    for (const f of files) await importFile(f, slot);
   };
-  $('impFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) openWith(fs); };
+  [['zPlan', 'impFilePlan', 'plan'], ['zLaps', 'impFileLaps', 'laps']].forEach(([z, inp, slot]) => {
+    $(inp).onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) openWith(fs, slot); };
+    $(z).addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); $(z).classList.add('over'); } });
+    $(z).addEventListener('dragleave', () => $(z).classList.remove('over'));
+    $(z).addEventListener('drop', e => {                  // dropped on one part: that is what it is
+      if (!hasFiles(e)) return;
+      e.preventDefault(); e.stopPropagation(); $(z).classList.remove('over');
+      dragDepth = 0; document.body.classList.remove('dragging');
+      const fs = [...e.dataTransfer.files]; if (fs.length) openWith(fs, slot);
+    });
+  });
   // drag & drop anywhere on the page (or onto the drop zone) and paste (Cmd/Ctrl+V) of a screenshot
   const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
   let dragDepth = 0;
