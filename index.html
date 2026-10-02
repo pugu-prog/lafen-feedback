@@ -431,7 +431,7 @@
   </div>
   <div id="impPrevWrap" hidden>
     <table id="impPrev">
-      <thead><tr><th style="width:90px">Typ</th><th>Dist.</th><th>Zäit</th><th>HR</th><th style="text-align:left">Kommentar</th></tr></thead>
+      <thead><tr><th style="width:90px">Typ</th><th>Dist.</th><th>Zäit</th><th title="Rep: héchst HR, Paus: déifst HR">HR (Rep max · Paus min)</th><th style="text-align:left">Kommentar</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -1029,7 +1029,8 @@
       const it = tokItem(m[1]); if (!it) { unread.push(raw); continue; }
       const bp = bracketPause(m[2]);                              // "8min threshold (90s Paus)"
       const note = bp.rest.replace(/\s+/g, ' ').trim();
-      if (it.time && !note) { addPause(it.time); continue; }
+      // a bare time is a pause after the block ("90s", "3min"); longer ones are a rep ("8min" threshold read without its word)
+      if (it.time && !note && it.time <= 180) { addPause(it.time); continue; }
       // warm-up / cool-down / easy running is not a rep ("4km", "2km auslaaf", "3km easy")
       if (it.dist && (!note || WARM.test(note))) { plain.push(it.dist); continue; }
       out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
@@ -1460,6 +1461,8 @@
   // two sources can be combined: the plan (part 1 / field "Plang als Text": what was planned) and the laps (watch file, Strava or
   // lap screenshot: what was measured). With both, the plan decides which laps are reps; laps in between are the pause.
   let lapSlot = null, lapSrc = '', lapInfo = '', lapName = '', planName = '';
+  // GPX holds only the GPS track, no laps of the watch: the tool makes 1 km splits, intervals cannot be found in it
+  const GPX_NOTE = 'GPX huet keng Ronne vun der Auer, just d\'GPS-Spur (dofir km-Splits). Fir Intervalle w.e.gl. d\'FIT- oder TCX-Datei huelen.';
   const hasXPlan = t => /\d\s*[x×]\s*[\d(]/i.test(t || '');
   function evaluate() {
     const text = $('impText').value;
@@ -1552,6 +1555,7 @@
       if (nPlan) {
         const m = mergePlan(lapSlot, plan.entries);
         if (m.entries) { entries = m.entries; msg = `${auto}. Plang „${plan.summary}“: ${nPlan} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
+        else if (/^GPX/.test(lapSrc)) { entries = copy(); err = true; msg = `${auto}. De Plang „${plan.summary}“ ka net an de km-Splits gesicht ginn.`; }
         else { entries = copy(); err = true;
                msg = `${auto}. De Plang „${plan.summary}“ passt net op d'Runden (${m.found} vu ${nPlan} Reps fonnt), dofir automatesch Erkennung. Plang verbesseren oder eidel maachen.`; }
       } else {
@@ -1663,6 +1667,7 @@
         lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier'; lapName = file.name || lapSrc;
         impMeta = laps.meta || null;
         lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
+        if (kind === 'gpx') lapInfo = ' ' + GPX_NOTE;
         $('impRoundRow').hidden = false;
         $('impRound').checked = /piste|track|bahn/i.test(S.surface);
         $('impRound').onchange({ target: $('impRound') });             // also runs combine()
