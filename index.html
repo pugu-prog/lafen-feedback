@@ -83,6 +83,8 @@
   input:focus, textarea:focus { outline: 2px solid var(--sb-blue); outline-offset: -1px; background: #fff; }
   input.num { text-align: right; }
   input.bad { outline: 2px solid #d33; }
+  input.ref { text-align: right; }
+  input.ref.own { font-weight: 700; }                 /* own value instead of the Excel formula */
   .calc {
     background: var(--calc); border: 1px solid #b9b6b6; padding: 2px 5px; min-height: 24px;
     border-radius: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -223,6 +225,7 @@
   <button id="btnNew" title="Trainingsdaten eidelmaachen, Num/Schwellen/Schung bleiwen">Neien Training</button>
   <button id="btnSave" title="Als JSON-Fichier späicheren">Späicheren</button>
   <button id="btnLoad" title="JSON-Fichier lueden">Lueden</button>
+  <button id="btnXlsx" title="Als Excel-Fichier, wéi déi al Vorlag (Formelen a Faarwen am Excel)">Excel</button>
   <input type="file" id="fileIn" accept=".json,application/json" hidden>
   <a class="btn" href="hellef.html" target="_blank" rel="noopener" title="Kuerz Erklärung: aginn, importéieren, Schreifweis fir Pläng">Hëllef</a>
   <a class="btn" href="https://form.jotform.com/262735789931069" target="_blank" rel="noopener" title="Problem gemellt oder Iddi? Kuerze Formulaire fir d'Testpersounen">Feedback</a>
@@ -298,15 +301,15 @@
       </tr>
       <tr>
         <td style="border:0" colspan="2"></td><td class="right">MIN</td>
-        <td class="out" id="refPaceMin"></td><td class="out" id="refHrMin"></td>
-        <td class="out" id="refPauseMin"></td>
+        <td class="cs" id="refPaceMin"><input class="num ref" data-k="rPaceMin" inputmode="decimal" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td><td class="cs" id="refHrMin"><input class="num ref" data-k="rHrMin" inputmode="numeric" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td>
+        <td class="cs" id="refPauseMin"><input class="num ref" data-k="rPhrMin" inputmode="numeric" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td>
         <td class="cs" id="cLacMin"><input class="num" data-k="lacMin" inputmode="decimal"></td>
         <td style="border:0" colspan="2"></td>
       </tr>
       <tr>
         <td style="border:0" colspan="2"></td><td class="right">MAX</td>
-        <td class="out" id="refPaceMax"></td><td class="out" id="refHrMax"></td>
-        <td class="out" id="refPauseMax"></td>
+        <td class="cs" id="refPaceMax"><input class="num ref" data-k="rPaceMax" inputmode="decimal" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td><td class="cs" id="refHrMax"><input class="num ref" data-k="rHrMax" inputmode="numeric" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td>
+        <td class="cs" id="refPauseMax"><input class="num ref" data-k="rPhrMax" inputmode="numeric" title="Ännere geet; eidel maachen = nees d'Formel vum Excel"></td>
         <td class="cs" id="cLacMax"><input class="num" data-k="lacMax" inputmode="decimal"></td>
         <td style="border:0" colspan="2"></td>
       </tr>
@@ -449,7 +452,7 @@
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
     training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
-    lacMin:'1,5', lacMax:'5,0', comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
+    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
     reps: Array.from({length:6}, blankRep)
   });
 
@@ -564,6 +567,18 @@
 
   // ---------- calculation ----------
   const $ = id => document.getElementById(id);
+  // reference rows MIN / MAX: [state key, cell id, Excel formula, time?]
+  const REFS = [['rPaceMin', 'refPaceMin', 'IF(E6="",0,E6+0.08*E6)', true], ['rPaceMax', 'refPaceMax', 'IF(E6="",0,E6-0.08*E6)', true],
+                ['rHrMin', 'refHrMin', 'IF(G6="",0,G6-15)'], ['rHrMax', 'refHrMax', 'IF(G6="",0,G6+25)'],
+                ['rPhrMin', 'refPauseMin', 'IF(G6="",0,G6-30)'], ['rPhrMax', 'refPauseMax', 'IF(G6="",0,G6+10)']];
+  const REFV = { rPaceMin: 'pMin', rPaceMax: 'pMax', rHrMin: 'hMin', rHrMax: 'hMax', rPhrMin: 'qMin', rPhrMax: 'qMax' };
+  function refValues() {
+    const paceThr = secs(S.paceThr), hrThr = num(S.hrThr);
+    const own = (k, f) => String(S[k] ?? '').trim() === '' ? f : k.startsWith('rPace') ? secs(S[k]) : num(S[k]);
+    return { pMin: own('rPaceMin', paceThr * 1.08), pMax: own('rPaceMax', paceThr * 0.92),
+             hMin: own('rHrMin', hrThr - 15), hMax: own('rHrMax', hrThr + 25),
+             qMin: own('rPhrMin', hrThr - 30), qMax: own('rPhrMax', hrThr + 10) };
+  }
   function calc() {
     // PDF name: YYMMDD Num -- Ënnergrond -- Training
     let ymd = '';
@@ -580,14 +595,15 @@
     $('paceThr').classList.toggle('bad', S.paceThr !== '' && !isFinite(paceThr));
 
     // MIN / MAX reference rows
-    const pMin = isFinite(paceThr) ? paceThr * 1.08 : NaN, pMax = isFinite(paceThr) ? paceThr * 0.92 : NaN;
-    const hMin = hrThr - 15, hMax = hrThr + 25, qMin = hrThr - 30, qMax = hrThr + 10;
-    $('refPaceMin').textContent = fmtMS(pMin);
-    $('refPaceMax').textContent = fmtMS(pMax);
-    $('refHrMin').textContent   = isFinite(hrThr) ? hMin : '';
-    $('refHrMax').textContent   = isFinite(hrThr) ? hMax : '';
-    $('refPauseMin').textContent = isFinite(hrThr) ? qMin : '';
-    $('refPauseMax').textContent = isFinite(hrThr) ? qMax : '';
+    // the Excel formulas, unless the trainer typed an own value (empty field = formula again)
+    const R = refValues();
+    const { pMin, pMax, hMin, hMax, qMin, qMax } = R;
+    REFS.forEach(([k, id, , isTime]) => {
+      const el = $(id).querySelector('input'), own = String(S[k] ?? '').trim() !== '', v = R[REFV[k]];
+      el.classList.toggle('own', own);
+      el.classList.toggle('bad', own && !isFinite(v));
+      if (el !== document.activeElement) el.value = own ? (isTime ? fmtTime(S[k]) : S[k]) : !isFinite(v) ? '' : isTime ? fmtMS(v) : v;
+    });
 
     const paceCells = [{el:$('paceThr'), v:paceThr}, {el:$('refPaceMin'), v:pMin}, {el:$('refPaceMax'), v:pMax}];
     const hrCells   = [{el:$('hrThr'), v:hrThr}, {el:$('refHrMin'), v:hMin}, {el:$('refHrMax'), v:hMax}];
@@ -720,9 +736,10 @@
   };
 
   $('btnNew').onclick = () => {
-    if (!confirm('Neien Training ufänken? Num, Schwellen, Schong a Laktat-Grenzen bleiwen.')) return;
+    if (!confirm('Neien Training ufänken? Num, Schwellen, MIN/MAX-Wäerter, Schong a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
-                  shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place};
+                  shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place,
+                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
@@ -747,6 +764,127 @@
     if (window.webkit?.messageHandlers?.sauerbeenPrint) window.webkit.messageHandlers.sauerbeenPrint.postMessage(document.title);
     else if (window.SauerBeenApp?.print) window.SauerBeenApp.print(document.title);
     else window.print();
+  };
+
+  // ================= Excel export: the old template „Lafen SauerBeen Trainingsfeedback Template.xlsx“, filled in =================
+  // The template's XML parts come from excel-vorlag.js; cells, formulas, styles and colour scales stay as in the Excel.
+  // 12 reps as in the template; more reps get more rows (totals, comment and colour ranges move down).
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  function zipStore(files, type) {                    // [[name, text]] → ZIP without compression
+    const enc = new TextEncoder(), out = [], central = []; let off = 0;
+    const d = new Date(), time = d.getHours() << 11 | d.getMinutes() << 5 | d.getSeconds() >> 1;
+    const date = (d.getFullYear() - 1980) << 9 | (d.getMonth() + 1) << 5 | d.getDate();
+    for (const [name, text] of files) {
+      const nm = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+      const h = new DataView(new ArrayBuffer(30)), c = new DataView(new ArrayBuffer(46));
+      [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [10, time, 2], [12, date, 2], [14, crc, 4], [18, data.length, 4], [22, data.length, 4], [26, nm.length, 2]]
+        .forEach(([o, v, n]) => n === 4 ? h.setUint32(o, v, true) : h.setUint16(o, v, true));
+      [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [12, time, 2], [14, date, 2], [16, crc, 4], [20, data.length, 4], [24, data.length, 4], [28, nm.length, 2], [42, off, 4]]
+        .forEach(([o, v, n]) => n === 4 ? c.setUint32(o, v, true) : c.setUint16(o, v, true));
+      out.push(h, nm, data); central.push(c, nm);
+      off += 30 + nm.length + data.length;
+    }
+    const size = central.reduce((a, x) => a + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, size, true); e.setUint32(16, off, true);
+    return new Blob([...out, ...central, e], { type });
+  }
+  const xe = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function buildSheet(tpl) {
+    const DAY_S = 86400, top = tpl.slice(0, tpl.indexOf('<sheetData>') + 11), end = tpl.slice(tpl.indexOf('</sheetData>'));
+    const rows = new Map();
+    for (const m of tpl.matchAll(/<row r="(\d+)"([^>]*?)(?:\/>|>(.*?)<\/row>)/gs)) {
+      const cells = new Map();
+      for (const c of (m[3] || '').matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>.*?<\/c>)/gs)) cells.set(c[1], { raw: c[0], s: (c[2].match(/ s="(\d+)"/) || [])[1] });
+      rows.set(+m[1], { attrs: m[2], cells });
+    }
+    // one cell: number, text, {f: formula, v: cached value} or empty
+    const cell = (ref, s, v) => {
+      const st = s != null ? ` s="${s}"` : '';
+      if (v == null || v === '' || (typeof v === 'number' && !isFinite(v))) return `<c r="${ref}"${st}/>`;
+      if (typeof v === 'number') return `<c r="${ref}"${st}><v>${v}</v></c>`;
+      if (typeof v === 'string') return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
+      const t = typeof v.v === 'string' ? (v.err ? ' t="e"' : ' t="str"') : '';
+      return `<c r="${ref}"${st}${t}><f>${xe(v.f)}</f>${v.v == null || (typeof v.v === 'number' && !isFinite(v.v)) ? '' : `<v>${xe(v.v)}</v>`}</c>`;
+    };
+    const set = (r, col, v) => { const row = rows.get(r), c = row.cells.get(col) || {}; row.cells.set(col, { raw: cell(col + r, c.s, v), s: c.s }); };
+    const n = x => { const v = num(x); return isFinite(v) ? v : null; };
+    const t = x => { const v = secs(x); return isFinite(v) ? v / DAY_S : null; };
+    const str = x => String(x ?? '').trim() || null;
+
+    // head
+    let ymd = '';
+    if (S.date) { const [y, m, d] = S.date.split('-'); ymd = y.slice(2) + m + d; }
+    set(4, 'C', { f: 'CONCATENATE(RIGHT(YEAR(C8),2),IF(MONTH(C8)<10,CONCATENATE("0",MONTH(C8)),MONTH(C8)),IF(DAY(C8)<10,CONCATENATE("0",DAY(C8)),DAY(C8))," ",C6," -- ",C10," -- ",C9)',
+                  v: `${ymd} ${S.name} -- ${S.surface} -- ${S.training}` });
+    set(6, 'C', str(S.name)); set(6, 'E', t(S.paceThr)); set(6, 'G', n(S.hrThr));
+    if (S.date) { const [y, m, d] = S.date.split('-').map(Number); set(8, 'C', (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 864e5); }
+    if (S.clock) { const [h, mi] = S.clock.split(':').map(Number); set(8, 'G', (h * 60 + mi) / 1440); }
+    set(9, 'C', str(S.training)); set(10, 'C', str(S.surface)); set(11, 'C', str(S.shoe)); set(12, 'C', str(S.nutrition));
+    set(13, 'C', str(S.partner)); set(14, 'C', n(S.temp)); set(14, 'G', n(S.wind));
+    // MIN / MAX: the Excel formula, or the trainer's own value
+    const R = refValues(), cols = { rPaceMin: [17, 'D'], rPaceMax: [18, 'D'], rHrMin: [17, 'E'], rHrMax: [18, 'E'], rPhrMin: [17, 'F'], rPhrMax: [18, 'F'] };
+    REFS.forEach(([k, , f, isTime]) => {
+      const [r, col] = cols[k], v = R[REFV[k]], val = isTime ? v / DAY_S : v;
+      set(r, col, String(S[k] ?? '').trim() !== '' ? (isFinite(val) ? val : null) : { f, v: isFinite(val) ? val : 0 });
+    });
+    set(17, 'G', n(S.lacMin)); set(18, 'G', n(S.lacMax));
+
+    // reps: rows 21 … (first rep row, pause rows, last pause row keep their own borders)
+    const N = Math.max(12, S.reps.length), delta = 2 * (N - 12);
+    const style = r => new Map([...rows.get(r).cells].map(([c, x]) => [c, x.s]));
+    const sFirst = style(21), sPause = style(22), sRep = style(23), sLastPause = style(44);
+    const aRep = rows.get(23).attrs, aPause = rows.get(24).attrs, aLast = rows.get(44).attrs;
+    const moved = new Map();
+    for (const [r, row] of rows) {
+      if (r < 21) moved.set(r, row);
+      else if (r >= 45) {                              // totals, comment: move down, formulas follow
+        const sh = x => x.replace(/([A-Z]+)(\d+)/g, (a, c, k) => +k >= 45 ? c + (+k + delta) : a);
+        const cells = new Map([...row.cells].map(([c, x]) => [c, { raw: x.raw.replace(/r="([A-Z]+)(\d+)"/, (a, cc, k) => `r="${cc}${+k + delta}"`).replace(/<f>(.*?)<\/f>/, (a, f) => `<f>${sh(f)}</f>`), s: x.s }]));
+        moved.set(r + delta, { attrs: row.attrs, cells });
+      }
+    }
+    let totD = 0, totT = 0;
+    for (let i = 0; i < N; i++) {
+      const rep = S.reps[i] || blankRep(), r = 21 + 2 * i, st = i ? sRep : sFirst, last = i === N - 1, ps = last ? sLastPause : sPause;
+      const d = metres(rep.dist), tm = secs(rep.time), pt = secs(rep.pTime);
+      if (isFinite(d)) totD += d;
+      if (isFinite(tm)) totT += tm;
+      if (isFinite(pt)) totT += pt;
+      const pace = isFinite(d) && d > 0 && isFinite(tm) ? tm / d * 1000 / DAY_S : null;
+      const repCells = { A: i + 1, B: isFinite(d) ? d : null, C: isFinite(tm) ? tm / DAY_S : null,
+        D: { f: `C${r}/B${r}*1000`, v: pace ?? '#DIV/0!', err: pace == null }, E: n(rep.hr), F: null, G: n(rep.lac), H: str(rep.note), J: null };
+      const pauseCells = { A: 'Paus', B: null, C: isFinite(pt) ? pt / DAY_S : null, D: '∞', E: null, F: n(rep.pHr), G: n(rep.pLac), H: str(rep.pNote), J: null };
+      const mk = (cs, sm, rr) => new Map(Object.entries(cs).map(([c, v]) => [c, { raw: cell(c + rr, sm.get(c), v), s: sm.get(c) }]));
+      moved.set(r, { attrs: aRep, cells: mk(repCells, st, r) });
+      moved.set(r + 1, { attrs: last ? aLast : aPause, cells: mk(pauseCells, ps, r + 1) });
+    }
+    // empty separator row 20 stays; totals and comment
+    const tr = 46 + delta, cr = 47 + delta;
+    const setM = (r, col, v) => { const row = moved.get(r), c = row.cells.get(col) || {}; row.cells.set(col, { raw: cell(col + r, c.s, v), s: c.s }); };
+    setM(tr, 'B', { f: `SUM(B20:B${45 + delta})`, v: totD }); setM(tr, 'C', { f: `SUM(C20:C${45 + delta})`, v: totT / DAY_S });
+    setM(cr, 'C', str(S.comment));
+
+    const colN = c => [...c].reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+    const body = [...moved].sort((a, b) => a[0] - b[0]).map(([r, row]) =>
+      `<row r="${r}"${row.attrs}>${[...row.cells.values()].sort((a, b) => colN(a.raw.match(/r="([A-Z]+)/)[1]) - colN(b.raw.match(/r="([A-Z]+)/)[1])).map(x => x.raw).join('')}</row>`).join('');
+    const shiftRef = q => q.replace(/([A-Z]+)(\d+)/g, (a, c, k) => +k >= 45 && +k < 1048576 ? c + (+k + delta) : a);
+    return top.replace(/<dimension ref="([^"]*)"/, (a, q) => `<dimension ref="${shiftRef(q)}"`) + body +
+           end.replace(/sqref="([^"]*)"/g, (a, q) => `sqref="${shiftRef(q)}"`);
+  }
+  $('btnXlsx').onclick = async () => {
+    try {
+      await loadScript('excel-vorlag.js');
+      const parts = Object.assign({}, window.LAFEN_XLSX);
+      parts['xl/worksheets/sheet1.xml'] = buildSheet(parts['xl/worksheets/sheet1.xml']);
+      const blob = zipStore(Object.entries(parts), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = ($('pdfName').textContent.trim() || 'Trainingsfeedback').replace(/[\\/:*?"<>|]/g, '-') + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (err) { alert('Excel-Fichier konnt net gemaach ginn: ' + (err.message || err)); }
   };
 
 
