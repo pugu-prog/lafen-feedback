@@ -979,7 +979,8 @@
     });
     return blocks.filter(b => b.lines.length);
   }
-  function parsePlan(text) {
+  // opts.friday: SauerBeen Fridays are hills + threshold, so short time reps without a word are hills
+  function parsePlan(text, opts = {}) {
     const out = [], plain = [], used = [], unread = [];
     const lines = String(text).split(/\n|;/).map(l => l.replace(/^[\s•\-–*·]+/, '').trim()).filter(Boolean);
     const lastRep = () => { for (let i = out.length - 1; i >= 0; i--) if (out[i].type === 'rep') return i; return -1; };
@@ -1010,7 +1011,8 @@
         const its = items.map(tokItem);
         if (!its.length || its.some(x => !x) || n < 1 || n > 60) { unread.push(raw); continue; }
         const bp = bracketPause(rest), pause = bp.pause;
-        const note = bp.rest.replace(/\s+/g, ' ').trim();
+        let note = bp.rest.replace(/\s+/g, ' ').trim(), tag = '';
+        if (!note && opts.friday && its.every(x => x.time && x.time <= 120)) note = tag = 'hills';
         // hills: recovery = jog back down (no fixed time); a time in brackets is the pause after the block
         const down = bp.down || HILL.test(note);
         for (let k = 0; k < n; k++) its.forEach((it, idx) => {
@@ -1020,7 +1022,7 @@
           // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
           else if (isFinite(pause)) out.push(E('pause', { time: fmtMS(pause) }));
         });
-        used.push(clean(raw));
+        used.push(clean(raw) + (tag ? ' ' + tag : ''));
         continue;
       }
       m = l.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)(?=[\s(]|$)\s*(.*)$/);
@@ -1028,14 +1030,15 @@
       if (!m) { if (/\d/.test(l)) unread.push(raw); continue; }
       const it = tokItem(m[1]); if (!it) { unread.push(raw); continue; }
       const bp = bracketPause(m[2]);                              // "8min threshold (90s Paus)"
-      const note = bp.rest.replace(/\s+/g, ' ').trim();
-      // a bare time is a pause after the block ("90s", "3min"); longer ones are a rep ("8min" threshold read without its word)
+      let note = bp.rest.replace(/\s+/g, ' ').trim(), tag = '';
+      // a bare time is a pause after the block ("90s", "3min"); longer ones are a threshold rep ("8min" read without its word)
       if (it.time && !note && it.time <= 180) { addPause(it.time); continue; }
+      if (it.time && !note) note = tag = 'threshold';
       // warm-up / cool-down / easy running is not a rep ("4km", "2km auslaaf", "3km easy")
       if (it.dist && (!note || WARM.test(note))) { plain.push(it.dist); continue; }
       out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
       if (isFinite(bp.pause)) out.push(E('pause', { time: fmtMS(bp.pause) }));
-      used.push(clean(raw));
+      used.push(clean(raw) + (tag ? ' ' + tag : ''));
     }
     // a pause after the very last rep is not part of the session (cool-down follows)
     while (out.length && out[out.length - 1].type === 'pause') out.pop();
@@ -1544,7 +1547,8 @@
     return { found: groups.length, entries: out };
   }
   function combine() {
-    const plan = parsePlan($('impPlan').value);
+    const day = planDate || metaFields(impMeta).date || S.date;
+    const plan = parsePlan($('impPlan').value, { friday: !!day && new Date(day + 'T12:00').getDay() === 5 });
     const nPlan = plan.entries.filter(e => e.type === 'rep').length;
     planSummary = plan.summary;
     const dTxt = planDate ? ` Datum: ${planDate.split('-').reverse().join('.')}.` : '';
@@ -1594,9 +1598,10 @@
   $('impCancel').onclick = () => dlg.close();
   $('impApply').onclick = () => {
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    // the plan names the session, unless it is just what already stands in "Training"
-    const pv = $('impPlan').value.trim();
-    if (applyEntries(entries, pv && pv !== String(S.training || '').trim().replace(/\s+\+\s+/g, '; ') ? planSummary : null)) dlg.close();
+    // the plan names the session, unless it is just what the runner typed in "Training" ("4x1600 (60s)" stays);
+    // a summary of an earlier import ("5×60s + 8min") is renewed ("5×60s hills + 8min threshold")
+    const pv = $('impPlan').value.trim(), tr = String(S.training || '').trim();
+    if (applyEntries(entries, pv && (/ \+ /.test(tr) || pv !== tr) ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
     entries = []; impMeta = null; planDate = ''; lapSlot = null; lapInfo = ''; lapName = ''; planName = ''; status(''); $('impDays').innerHTML = '';
