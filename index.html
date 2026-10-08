@@ -214,6 +214,8 @@
   #stravaList small { color: var(--muted); white-space: nowrap; }
   #stravaOff { font-size: 12px; color: var(--muted); background: none; border: 0; text-decoration: underline; padding: 0 4px; }
   #imp .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .rowbtns .tgl { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--sb-blue); font-size: 13px; cursor: pointer; }
+  .rowbtns .tgl input { width: auto; }
   .rowbtns select { font: inherit; padding: 5px 10px; border-radius: 18px; border: 1px solid #c3c8da; background: #fff; color: var(--sb-blue); }
 </style>
 </head>
@@ -349,6 +351,7 @@
       <option value="30000">30 km</option>
       <option value="42195">Marathon</option>
     </select>
+    <label class="tgl" title="Nëmmen d'Weisen (Tabell, PDF, Excel): gerechent gëtt ëmmer mat de genaue Zäiten"><input type="checkbox" id="tenths"> Zäite just op Zéngtel (7:38,2 amplaz 7:38,15)</label>
   </div>
   <datalist id="brandList"></datalist>
   <datalist id="modelList"></datalist>
@@ -452,7 +455,7 @@
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
     training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
-    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
+    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', tenths:false, comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
     reps: Array.from({length:6}, blankRep)
   });
 
@@ -666,13 +669,16 @@
     document.querySelectorAll('[data-k]').forEach(el => {
       el.value = S[el.dataset.k] ?? '';
     });
+    $('tenths').checked = !!S.tenths;
   }
+  $('tenths').onchange = e => { S.tenths = e.target.checked; calc(); showTimes(); };
   // time fields are shown formatted (m:ss,0, or m:ss,00 when hundredths were typed) when not being
   // edited; the typed value is kept unrounded and used for all calculations
   const rawOf = el => el.dataset.k ? S[el.dataset.k] : S.reps[el.dataset.r][el.dataset.f];
   const fmtTime = raw => {
     const v = secs(raw);
     if (!isFinite(v)) return raw;
+    if (S.tenths) return fmtMS(v);                     // switch „Zäite just op Zéngtel“: display only, calculations stay exact
     const frac = (String(raw).match(/[.,](\d+)$/) || ['', ''])[1];
     if (frac.length < 2 || v >= 3600) return fmtMS(v);
     const t = rnd(v, 100), m = Math.floor(t / 60), s = rnd(t - m * 60, 100);
@@ -739,7 +745,7 @@
     if (!confirm('Neien Training ufänken? Num, Schwellen, MIN/MAX-Wäerter, Schong a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
                   shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place,
-                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax};
+                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax, tenths:S.tenths};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
@@ -791,7 +797,23 @@
     return new Blob([...out, ...central, e], { type });
   }
   const xe = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  function buildSheet(tpl) {
+  // switch off (default): times in the Excel as m:ss,00 like the watch; on: the template's m:ss,0.
+  // New cell styles = copies of the template's time styles with number format 171 "m:ss.00".
+  function hundredthStyles(styles, ids) {
+    const block = styles.match(/<cellXfs count="(\d+)">([\s\S]*?)<\/cellXfs>/);
+    const list = block[2].match(/<xf [^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g), add = [], map = {};
+    ids.forEach(id => {
+      if (id == null || map[id] != null) return;
+      map[id] = String(list.length + add.length);
+      let xf = list[+id].replace(/numFmtId="\d+"/, 'numFmtId="171"');
+      if (!/applyNumberFormat/.test(xf)) xf = xf.replace('<xf ', '<xf applyNumberFormat="1" ');
+      add.push(xf);
+    });
+    const out = styles.replace(block[0], `<cellXfs count="${list.length + add.length}">${block[2]}${add.join('')}</cellXfs>`)
+      .replace(/<numFmts count="(\d+)">/, (a, n) => `<numFmts count="${+n + 1}"><numFmt numFmtId="171" formatCode="m:ss.00"/>`);
+    return { styles: out, map };
+  }
+  function buildSheet(tpl, timeStyle = s => s) {
     const DAY_S = 86400, top = tpl.slice(0, tpl.indexOf('<sheetData>') + 11), end = tpl.slice(tpl.indexOf('</sheetData>'));
     const rows = new Map();
     for (const m of tpl.matchAll(/<row r="(\d+)"([^>]*?)(?:\/>|>(.*?)<\/row>)/gs)) {
@@ -856,7 +878,10 @@
       const repCells = { A: i + 1, B: isFinite(d) ? d : null, C: isFinite(tm) ? tm / DAY_S : null,
         D: { f: `C${r}/B${r}*1000`, v: pace ?? '#DIV/0!', err: pace == null }, E: n(rep.hr), F: null, G: n(rep.lac), H: str(rep.note), J: null };
       const pauseCells = { A: 'Paus', B: null, C: isFinite(pt) ? pt / DAY_S : null, D: '∞', E: null, F: n(rep.pHr), G: n(rep.pLac), H: str(rep.pNote), J: null };
-      const mk = (cs, sm, rr) => new Map(Object.entries(cs).map(([c, v]) => [c, { raw: cell(c + rr, sm.get(c), v), s: sm.get(c) }]));
+      const mk = (cs, sm, rr) => new Map(Object.entries(cs).map(([c, v]) => {
+        const st = c === 'C' ? timeStyle(sm.get(c)) : sm.get(c);       // column C = rep and pause times
+        return [c, { raw: cell(c + rr, st, v), s: st }];
+      }));
       moved.set(r, { attrs: aRep, cells: mk(repCells, st, r) });
       moved.set(r + 1, { attrs: last ? aLast : aPause, cells: mk(pauseCells, ps, r + 1) });
     }
@@ -877,7 +902,14 @@
     try {
       await loadScript('excel-vorlag.js');
       const parts = Object.assign({}, window.LAFEN_XLSX);
-      parts['xl/worksheets/sheet1.xml'] = buildSheet(parts['xl/worksheets/sheet1.xml']);
+      let timeStyle;
+      if (!S.tenths) {
+        const tpl = parts['xl/worksheets/sheet1.xml'];
+        const ids = [21, 22, 23, 24, 44].map(r => (tpl.match(new RegExp(`<c r="C${r}" s="(\\d+)"`)) || [])[1]);
+        const h = hundredthStyles(parts['xl/styles.xml'], ids);
+        parts['xl/styles.xml'] = h.styles; timeStyle = s => h.map[s] ?? s;
+      }
+      parts['xl/worksheets/sheet1.xml'] = buildSheet(parts['xl/worksheets/sheet1.xml'], timeStyle);
       const blob = zipStore(Object.entries(parts), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1300,6 +1332,11 @@
     });
     if (!laps.length) throw new Error('Am TCX-Fichier si keng Runden.');
     if (!laps.some(l => l.kind === 'pause')) laps.forEach(l => l.kind = '');
+    // start time (UTC, shown in this browser's time zone) and start position for date, time of day, place and weather
+    const first = kids(doc, 'Lap')[0], st = Date.parse(first.getAttribute('StartTime') || (kids(doc, 'Id')[0] || {}).textContent);
+    const pos = kids(doc, 'Position')[0];
+    laps.meta = { start: isFinite(st) ? st / 1000 - FIT_EPOCH : undefined,
+                  lat: pos ? val(pos, 'LatitudeDegrees') : undefined, lon: pos ? val(pos, 'LongitudeDegrees') : undefined };
     return laps;
   }
 
@@ -1328,6 +1365,7 @@
     }
     const restD = cum - (mark - 1000);
     if (restD > 1) laps.push({ d: restD, t: pts[pts.length - 1].ts - t0, hrMax: hrs.length ? Math.max(...hrs) : undefined, hrMin: hrs.length ? Math.min(...hrs) : undefined, kind: 'rep' });
+    laps.meta = { start: pts[0].ts - FIT_EPOCH, lat: pts[0].lat, lon: pts[0].lon };
     return laps;
   }
 
@@ -1401,6 +1439,25 @@
     if (m && m.temp == null) parts.push(m.sensorTemp != null ? `keng Wiederdonnéeën (Auer-Sensor ${m.sensorTemp} °C, net iwwerholl)` : 'keng Wiederdonnéeën');
     return parts.length ? ' ' + parts.join(' · ') + '.' : '';
   };
+
+  // date, time of day and start place of an activity file go straight into the sheet (the file is what was run);
+  // the place name comes from the GPS start via OpenStreetMap, weather then follows for that place
+  async function placeName(lat, lon) {
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=de&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
+      const a = r.ok ? (await r.json()).address || {} : {};
+      return a.village || a.town || a.city || a.municipality || a.hamlet || a.suburb || '';
+    } catch { return ''; }
+  }
+  async function takeMeta(m) {
+    const mf = metaFields(m);
+    if (!mf.date) return '';
+    S.date = mf.date; S.clock = mf.clock;
+    let place = '';
+    if (mf.lat != null) { S.wxLat = mf.lat; S.wxLon = mf.lon; place = await placeName(mf.lat, mf.lon); if (place) S.place = place; }
+    fillMeta(); calc(); maybeWeather();
+    return place;
+  }
 
   // ---------- entries → sheet ----------
   function applyEntries(list, training) {
@@ -1673,6 +1730,8 @@
         impMeta = laps.meta || null;
         lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
         if (kind === 'gpx') lapInfo = ' ' + GPX_NOTE;
+        const place = await takeMeta(impMeta);
+        lapInfo += ' Datum, Auerzäit' + (place ? ` a Plaz (${place})` : '') + ' sinn agedroen.';
         $('impRoundRow').hidden = false;
         $('impRound').checked = /piste|track|bahn/i.test(S.surface);
         $('impRound').onchange({ target: $('impRound') });             // also runs combine()
