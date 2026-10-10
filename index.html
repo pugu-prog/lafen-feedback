@@ -216,6 +216,7 @@
   #imp .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   .rowbtns .tgl { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--sb-blue); font-size: 13px; cursor: pointer; }
   .rowbtns .tgl input { width: auto; }
+  .rowbtns .tgl + .tgl { margin-left: 0; }
   .rowbtns select { font: inherit; padding: 5px 10px; border-radius: 18px; border: 1px solid #c3c8da; background: #fff; color: var(--sb-blue); }
 </style>
 </head>
@@ -352,6 +353,7 @@
       <option value="42195">Marathon</option>
     </select>
     <label class="tgl" title="Nëmmen d'Weisen (Tabell, PDF, Excel): gerechent gëtt ëmmer mat de genaue Zäiten"><input type="checkbox" id="tenths"> Zäite just op Zéngtel (7:38,2 amplaz 7:38,15)</label>
+    <label class="tgl" title="Nëmmen d'Weisen (Tabell, PDF): gerechent gëtt ëmmer mat de genaue Distanzen"><input type="checkbox" id="intDist"> Distanze ouni Komma (1601 amplaz 1601,3)</label>
   </div>
   <datalist id="brandList"></datalist>
   <datalist id="modelList"></datalist>
@@ -455,7 +457,7 @@
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
     training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
-    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', tenths:false, comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
+    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', tenths:false, intDist:false, comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
     reps: Array.from({length:6}, blankRep)
   });
 
@@ -546,7 +548,7 @@
     rowsEl.innerHTML = S.reps.map((r, i) => `
       <tr class="rep" data-i="${i}">
         <td>${i + 1}</td>
-        <td class="in"><input data-r="${i}" data-f="dist" class="num" inputmode="decimal" list="distList"></td>
+        <td class="in"><input data-r="${i}" data-f="dist" class="num dst" inputmode="decimal" list="distList"></td>
         <td class="in"><input data-r="${i}" data-f="time" class="num tm" inputmode="decimal"></td>
         <td class="out" data-o="pace"></td>
         <td class="in cs" data-c="hr"><input data-r="${i}" data-f="hr" class="num" inputmode="numeric"></td>
@@ -647,7 +649,7 @@
     scale(phrCells, GRN, RED);
     scale(lacCells, GRN, RED);
 
-    $('totDist').textContent = totD ? fmtDist(totD) : '';
+    $('totDist').textContent = totD ? fmtDist(S.intDist ? Math.round(totD) : totD) : '';
     $('totTime').textContent = totT ? fmtHMS(totT) : '';
 
     const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
@@ -670,8 +672,10 @@
       el.value = S[el.dataset.k] ?? '';
     });
     $('tenths').checked = !!S.tenths;
+    $('intDist').checked = !!S.intDist;
   }
   $('tenths').onchange = e => { S.tenths = e.target.checked; calc(); showTimes(); };
+  $('intDist').onchange = e => { S.intDist = e.target.checked; calc(); showTimes(); };
   // time fields are shown formatted (m:ss,0, or m:ss,00 when hundredths were typed) when not being
   // edited; the typed value is kept unrounded and used for all calculations
   const rawOf = el => el.dataset.k ? S[el.dataset.k] : S.reps[el.dataset.r][el.dataset.f];
@@ -684,11 +688,13 @@
     const t = rnd(v, 100), m = Math.floor(t / 60), s = rnd(t - m * 60, 100);
     return m + ':' + (s < 10 ? '0' : '') + dec(s, 2);
   };
-  const showTimes = () => document.querySelectorAll('input.tm').forEach(el => {
+  // switch „Distanze ouni Komma“: rep distances shown as whole metres, the typed value stays for all calculations
+  const fmtDistIn = raw => { const m = metres(raw); return S.intDist && isFinite(m) ? String(Math.round(m)) : raw; };
+  const showTimes = () => document.querySelectorAll('input.tm, input.dst').forEach(el => {
     if (el === document.activeElement) return;
-    el.value = fmtTime(rawOf(el) ?? '');
+    el.value = el.classList.contains('dst') ? fmtDistIn(rawOf(el) ?? '') : fmtTime(rawOf(el) ?? '');
   });
-  document.addEventListener('focusin', e => { if (e.target.classList?.contains('tm')) e.target.value = rawOf(e.target) ?? ''; });
+  document.addEventListener('focusin', e => { if (e.target.classList?.contains('tm') || e.target.classList?.contains('dst')) e.target.value = rawOf(e.target) ?? ''; });
   document.addEventListener('focusout', () => setTimeout(showTimes));
 
   document.addEventListener('input', e => {
@@ -745,7 +751,7 @@
     if (!confirm('Neien Training ufänken? Num, Schwellen, MIN/MAX-Wäerter, Schong a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
                   shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place,
-                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax, tenths:S.tenths};
+                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax, tenths:S.tenths, intDist:S.intDist};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
