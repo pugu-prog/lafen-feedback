@@ -1459,6 +1459,8 @@
     const mf = metaFields(m);
     if (!mf.date) return '';
     S.date = mf.date; S.clock = mf.clock;
+    // weather of the last training must not stay: the file's own values (Garmin), else Open-Meteo fills them anew
+    S.temp = mf.temp || ''; S.wind = mf.wind || ''; S.wxAuto = null;
     let place = '';
     if (mf.lat != null) { S.wxLat = mf.lat; S.wxLon = mf.lon; place = await placeName(mf.lat, mf.lon); if (place) S.place = place; }
     fillMeta(); calc(); maybeWeather();
