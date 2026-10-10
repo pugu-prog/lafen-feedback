@@ -1123,6 +1123,11 @@
     let thr = Infinity;
     for (let i = 1; i < paces.length; i++) if (paces[i] / paces[i - 1] > 1.25) { thr = (paces[i] + paces[i - 1]) / 2; break; }
     const typed = rows.map(r => r.d > 0 && r.t / r.d <= thr ? 'rep' : 'pause');
+    // a plain run with auto laps (1000 m each, the rest at the end, e.g. 5 × 1000 m + 366 m): every running lap counts,
+    // a short stop on the way (traffic light, 20 s) stays a pause
+    const run = rows.filter(r => r.d > 0);
+    if (run.length >= 2 && run.slice(0, -1).every(r => Math.abs(r.d - 1000) < 1) && run[run.length - 1].d < 1000)
+      return rows.map(r => r.d > 0 ? 'rep' : 'pause');
     // warm-up / cool-down: a "rep" at either end that is slower than the typical rep and has a different distance
     const repIdx = typed.map((t, i) => t === 'rep' ? i : -1).filter(i => i >= 0);
     if (repIdx.length >= 3) {
@@ -1446,7 +1451,8 @@
     try {
       const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=de&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
       const a = r.ok ? (await r.json()).address || {} : {};
-      return a.village || a.town || a.city || a.municipality || a.hamlet || a.suburb || '';
+      // in Luxembourg the village (Gilsdorf, not the commune Bettendorf), abroad the city (Lissabon, not the quarter Madalena)
+      return (a.country_code === 'lu' ? a.village || a.town || a.city : a.city || a.town || a.village) || a.municipality || a.hamlet || a.suburb || '';
     } catch { return ''; }
   }
   async function takeMeta(m) {
