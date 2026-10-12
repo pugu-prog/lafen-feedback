@@ -772,7 +772,10 @@
   };
   // suggested PDF file name = page title = "260930 Guy -- Piste -- 4x1600" (like the Excel), set in calc().
   // Inside the SauerBeen app (WebView) window.print() does nothing: the app prints natively with the print CSS.
+  // anonymous click counter (only a number per button, nothing about the runner or the training); live site only
+  const countUse = k => { if (location.hostname === 'pugu-prog.github.io') fetch('https://abacus.jasoncameron.dev/hit/lafen-sauerbeen/' + k, { keepalive: true }).catch(() => {}); };
   $('btnPdf').onclick = () => {
+    countUse('pdf');
     if (window.webkit?.messageHandlers?.sauerbeenPrint) window.webkit.messageHandlers.sauerbeenPrint.postMessage(document.title);
     else if (window.SauerBeenApp?.print) window.SauerBeenApp.print(document.title);
     else window.print();
@@ -921,6 +924,7 @@
       a.href = URL.createObjectURL(blob);
       a.download = ($('pdfName').textContent.trim() || 'Trainingsfeedback').replace(/[\\/:*?"<>|]/g, '-') + '.xlsx';
       document.body.appendChild(a); a.click(); a.remove();
+      countUse('excel');
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } catch (err) { alert('Excel-Fichier konnt net gemaach ginn: ' + (err.message || err)); }
   };

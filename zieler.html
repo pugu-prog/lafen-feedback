@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="lb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SauerBeen Trainingsfeedback · Zieler</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Titillium+Web:wght@700;900&display=swap">
+<style>
+  :root { --sb-blue: #293d96; --sb-yellow: #ffed00; --text: #414141; --muted: #6b6b70; --bg: #eef0f6; --paper: #fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--sb-blue); color: #fff; }
+  .toolbar h1 { margin: 0 auto 0 0; font: 900 18px/1 "Titillium Web", Inter, sans-serif; text-transform: uppercase; letter-spacing: .02em; }
+  .toolbar a { color: #fff; border: 1px solid rgba(255,255,255,.7); border-radius: 18px; padding: 6px 14px; text-decoration: none; font-weight: 500; }
+  main { max-width: 560px; margin: 16px auto; padding: 22px 24px; background: var(--paper); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .n { border-top: 4px solid var(--sb-yellow); padding: 10px 0; }
+  .n b { display: block; font: 900 44px/1 "Titillium Web", Inter, sans-serif; color: var(--sb-blue); font-variant-numeric: tabular-nums; }
+  .n span { color: var(--muted); }
+  p { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="toolbar"><h1>Trainingsfeedback · Zieler</h1><a href="./">← Tool</a></div>
+<main>
+  <div class="nums">
+    <div class="n"><b id="pdf">…</b><span>Klicks op „PDF fir den Trainer“</span></div>
+    <div class="n"><b id="excel">…</b><span>Klicks op „Excel“</span></div>
+  </div>
+  <p>Gezielt gëtt zanter dem 12.10.2026, just um Site pugu-prog.github.io, ouni Nimm an ouni Trainingsdonnéeën. All Klick zielt, och wann een de Drockdialog duerno ofbrécht.</p>
+</main>
+<script>
+  ['pdf', 'excel'].forEach(k => fetch('https://abacus.jasoncameron.dev/get/lafen-sauerbeen/' + k)
+    .then(r => r.ok ? r.json() : { value: 0 })
+    .then(j => { document.getElementById(k).textContent = j.value > 0 ? j.value : 0; })
+    .catch(() => { document.getElementById(k).textContent = '?'; }));
+</script>
+</body>
+</html>
