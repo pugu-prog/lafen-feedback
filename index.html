@@ -1046,7 +1046,7 @@
           const j = rest.indexOf(')'); if (j < 0) continue;
           items = rest.slice(1, j).split(/\s*[-–\/+,]\s*/); rest = rest.slice(j + 1);
         } else {
-          const t = rest.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)/);
+          const t = rest.match(/^([\d.,]+\s*(?:min|mn|sec|sek|km|k|m|s|''|'|")?(?![a-z])|hm|marathon)/);   // "min" before "m": 4x8min ≠ 8 m
           if (!t) { unread.push(raw); continue; }
           items = [t[1]]; rest = rest.slice(t[0].length);
         }
