@@ -1311,7 +1311,11 @@
     // a few seconds of moving right next to a pause (4 s, 0 m) belong to that pause
     for (let i = out.length - 1; i >= 0; i--) {
       const x = out[i], nb = out[i - 1]?.kind === 'pause' ? out[i - 1] : out[i + 1]?.kind === 'pause' ? out[i + 1] : null;
-      if (x.kind !== 'pause' && nb && x.t < 10 && !(x.d >= 20)) { nb.t += x.t; out.splice(i, 1); }
+      if (x.kind !== 'pause' && nb && x.t < 10 && !(x.d >= 20)) {
+        nb.t += x.t;                              // its HR too: the lowest HR is often in the last seconds of the rest
+        if (x.hrMin != null && !(nb.hrMin <= x.hrMin)) nb.hrMin = x.hrMin;
+        out.splice(i, 1);
+      }
     }
     // interval with the watch stopped in the rests and laps every km (Coros/Garmin auto lap): 1000 m laps plus the
     // rest lap between two pauses form one rep (1000 + 601 m = 1600 m), but only when there are several such stretches
