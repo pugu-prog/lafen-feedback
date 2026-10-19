@@ -415,6 +415,7 @@
       <code>4km WU</code> Ee-/Auslafen (WU, CD, Auslaf …) zielt net als Rep ·
       <code>6x1000m (60s)</code> Reps mat Paus dertëscht ·
       <code>4x(1600-1200) (60s)</code> Serie ·
+      <code>3-5x(800 p45s 600 p30s 400)</code> 3 bis 5 Serie mat Pausen an der Serie (<code>p90s</code> drënner = Paus tëscht de Serien) ·
       <code>8min threshold @ 4:50</code> Rep no Zäit, Zil-Pace als Kommentar ·
       <code>p90s</code> oder <code>90s</code> eleng op enger Zeil = Paus nom Block ·
       <code>5x30s rop (rof)</code> Hills: rop lafen, rof trabéieren, direkt déi nächst.
@@ -731,7 +732,7 @@
     const res = parsePlan(S.training);
     if (!res.entries.some(e => e.type === 'rep')) { alert('Am Feld „Training“ keen Muster wéi „6x1000 (60s)“ fonnt.'); return; }
     if (hasData() && !confirm('Et sinn schonn Donnéeën an de Reps. Iwwerschreiwen?')) return;
-    impMeta = null; planDate = ''; applyEntries(res.entries, null);
+    impMeta = null; planDate = ''; applyEntries(minPlan(res.entries), null);
   };
   $('preset').onchange = e => {
     const v = e.target.value, label = e.target.selectedOptions[0].textContent;
@@ -1028,6 +1029,8 @@
     const lastRep = () => { for (let i = out.length - 1; i >= 0; i--) if (out[i].type === 'rep') return i; return -1; };
     const addPause = sec => {
       const i = lastRep(); if (i < 0) return;
+      // "4x(800 p45s 600 p30s 400)" + "p90s" on the next line: also the pause between the series
+      out.forEach(e => { if (e.sp && e.sp === out[i].blk && !e.time) e.time = fmtMS(sec); });
       const next = out[i + 1];
       if (next && next.type === 'pause') { if (!next.time) { next.time = fmtMS(sec); next.note = ''; } }
       else out.splice(i + 1, 0, E('pause', { time: fmtMS(sec) }));
@@ -1039,12 +1042,20 @@
         const d = parseDur(l.slice(pp[0].length).replace(/\(.*\)/, '').trim());
         if (isFinite(d)) { addPause(d); continue; }
       }
-      let m = l.match(/^(\d+)\s*x\s*(.+)$/);
+      // "3-5x(800 p45s 600 p30s 400)": 3 to 5 series (each runner does as many as the coach says; the watch file shows
+      // how many), "p45s" inside the bracket = pause after that part of the series
+      let m = l.match(/^(\d+)(?:\s*[-–]\s*(\d+))?\s*x\s*(.+)$/);
       if (m) {
-        const n = +m[1]; let rest = m[2].trim(), items;
+        const nMin = +m[1], n = Math.max(nMin, +(m[2] || m[1])); let rest = m[3].trim(), items, inner = [];
         if (rest.startsWith('(')) {
           const j = rest.indexOf(')'); if (j < 0) continue;
-          items = rest.slice(1, j).split(/\s*[-–\/+,]\s*/); rest = rest.slice(j + 1);
+          items = [];
+          rest.slice(1, j).split(/\s*[-–\/+,]\s*|\s+/).filter(Boolean).forEach(tok => {
+            const pq = tok.match(PAUSE_PREFIX);
+            if (pq && items.length) inner[items.length - 1] = parseDur(tok.slice(pq[0].length));
+            else items.push(tok);
+          });
+          rest = rest.slice(j + 1);
         } else {
           const t = rest.match(/^([\d.,]+\s*(?:min|mn|sec|sek|km|k|m|s|''|'|")?(?![a-z])|hm|marathon)/);   // "min" before "m": 4x8min ≠ 8 m
           if (!t) { unread.push(raw); continue; }
@@ -1052,19 +1063,33 @@
         }
         const its = items.map(tokItem);
         if (!its.length || its.some(x => !x) || n < 1 || n > 60) { unread.push(raw); continue; }
+        // "(90s serienpaus)": the time in brackets is only the pause between the series
+        const serie = /\([^)]*seri[^)]*\)/.test(rest);
+        // pauses inside the series written as text: "45 an 30s an der serie" → 45 s, 30 s
+        let serieTxt = '';
+        rest = rest.replace(/((?:\d+\s*(?:s|sek|sec)?\s*(?:an|a|und|&|,|\/)\s*)*\d+\s*(?:s|sek|sec)?)\s*(?:an|in|bannen an)\s+der\s+serie\b/, (a, list) => {
+          serieTxt = a; const ds = list.match(/\d+/g).map(Number);
+          its.slice(0, -1).forEach((x, i) => { if (inner[i] == null) inner[i] = ds[Math.min(i, ds.length - 1)]; });
+          return ' ';
+        });
         const bp = bracketPause(rest), pause = bp.pause;
         let note = bp.rest.replace(/\s+/g, ' ').trim(), tag = '';
         if (!note && opts.friday && its.every(x => x.time && x.time <= 120)) note = tag = 'hills';
         // hills: recovery = jog back down (no fixed time); a time in brackets is the pause after the block
         const down = bp.down || HILL.test(note);
+        const blk = out.length + 1;                       // series k ≥ nMin are optional (opt): only taken when the watch has them
+        const tm = d => isFinite(d) ? fmtMS(d) : '';
         for (let k = 0; k < n; k++) its.forEach((it, idx) => {
-          out.push(E('rep', { dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }));
-          const isLast = k === n - 1 && idx === its.length - 1;
-          if (!isLast) out.push(down ? E('pause', { note: 'rof trabéieren' }) : E('pause', { time: isFinite(pause) ? fmtMS(pause) : '' }));
+          const opt = k >= nMin ? { opt: true, blk, ser: blk * 100 + k } : { blk, ser: blk * 100 + k };
+          out.push(E('rep', Object.assign({ dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }, opt)));
+          const isLast = k === n - 1 && idx === its.length - 1, endSer = idx === its.length - 1;
+          if (!isLast && down) out.push(E('pause', { note: 'rof trabéieren' }));
+          else if (!isLast && !endSer) out.push(E('pause', Object.assign({ time: tm(inner[idx] ?? (serie ? NaN : pause)) }, opt)));
+          else if (!isLast) out.push(E('pause', Object.assign({ time: tm(pause), sp: blk }, k + 1 >= nMin ? { opt: true, blk } : {})));
           // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
           else if (isFinite(pause)) out.push(E('pause', { time: fmtMS(pause) }));
         });
-        used.push(clean(raw) + (tag ? ' ' + tag : ''));
+        used.push(clean(raw.replace(serieTxt, ' ')) + (tag ? ' ' + tag : ''));
         continue;
       }
       m = l.match(/^([\d.,]+\s*(?:km|k|m|min|sec|sek|s|''|'|")?|hm|marathon)(?=[\s(]|$)\s*(.*)$/);
@@ -1091,6 +1116,8 @@
     }
     return { entries: out, summary: used.join(' + '), unread };
   }
+  // without the watch file: the minimum number of series ("3-5x" → 3); more can be added with "+ Rep"
+  const minPlan = list => list.filter(e => !e.opt);
 
   // ---------- lap list (watch app / display) text → entries ----------
   const SUMMARY = /^\s*(summary|total|totals|gesamt|zusammenfassung|r[ée]sum[ée]|totaal|insgesamt)\b/i;
@@ -1586,12 +1613,14 @@
   function mergePlan(laps, plan) {
     const steps = [];
     plan.forEach(e => {
-      if (e.type === 'rep') steps.push({ d: metres(e.dist), t: secs(e.time), note: e.note, gap: false, down: HILL.test(e.note || '') });
+      if (e.type === 'rep') steps.push({ d: metres(e.dist), t: secs(e.time), note: e.note, gap: false, down: HILL.test(e.note || ''), opt: e.opt, blk: e.blk, ser: e.ser });
       else if (e.type === 'pause' && steps.length) { const st = steps[steps.length - 1]; st.gap = true; st.down ||= /rof/i.test(e.note); }
     });
     const L = laps.map(e => ({ e, d: isFinite(e.gps) ? e.gps : metres(e.dist), t: secs(e.time), stop: e.stop }));
-    const groups = []; let k = 0;
+    const groups = [], kept = []; let k = 0, kSer = 0, dropBlk = null;
     for (const [s, r] of steps.entries()) {
+      if (dropBlk != null && r.blk === dropBlk) continue;          // optional series the runner did not do
+      if (s === 0 || r.ser !== steps[s - 1].ser) kSer = k;         // where this series starts
       const byD = isFinite(r.d), T = byD ? r.d : r.t;
       if (!isFinite(T)) return { entries: null, found: groups.length };
       let hit = null;
@@ -1604,15 +1633,19 @@
           if (sum > T * 1.15) break;
         }
       }
+      if (!hit && r.opt) {                                       // series not run: drop it (and the rest of the block)
+        while (kept.length && kept[kept.length - 1].ser === r.ser) { kept.pop(); groups.pop(); }
+        k = kSer; dropBlk = r.blk; continue;
+      }
       if (!hit) return { entries: null, found: groups.length };
-      groups.push(hit);
+      groups.push(hit); kept.push(r);
       k = hit[1] + 1 + (r.gap && s < steps.length - 1 ? 1 : 0);
     }
     const first = groups[0][0], last = groups[groups.length - 1][1], out = [];
     for (let i = 0; i < L.length; i++) {
       const g = groups.findIndex(x => x[0] === i);
       if (g >= 0) {                              // one rep from laps i … j
-        const [a, b] = groups[g], part = L.slice(a, b + 1), r = steps[g];
+        const [a, b] = groups[g], part = L.slice(a, b + 1), r = kept[g];
         const hrs = part.flatMap(x => x.e.type === 'pause' ? [] : x.e.hrs.length ? [Math.max(...x.e.hrs)] : x.e.hr ? [+x.e.hr] : []);
         const d = part.reduce((s, x) => s + (x.d || 0), 0), t = part.reduce((s, x) => s + (x.t || 0), 0);
         out.push(E('rep', { dist: isFinite(r.d) ? fmtNum(r.d) : fmtNum(Math.round(d * 10) / 10), time: fmtCs(t),
@@ -1621,7 +1654,7 @@
       }
       const type = i > first && i < last ? 'pause' : 'skip', o = Object.assign({}, L[i].e, { type });
       const prev = groups.findLastIndex(x => x[1] < i);       // hills: the lap after a rep is the jog back down
-      if (type === 'pause' && prev >= 0 && steps[prev].down && isFinite(L[i].d) && !o.note) o.note = 'rof';
+      if (type === 'pause' && prev >= 0 && kept[prev].down && isFinite(L[i].d) && !o.note) o.note = 'rof';
       if (o.hrs.length) o.hr = String(type === 'pause' ? Math.min(...o.hrs) : Math.max(...o.hrs));
       out.push(o);
     }
@@ -1639,7 +1672,7 @@
       const auto = `${lapSrc}: ${lapSlot.length} Runden`;
       if (nPlan) {
         const m = mergePlan(lapSlot, plan.entries);
-        if (m.entries) { entries = m.entries; msg = `${auto}. Plang „${plan.summary}“: ${nPlan} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
+        if (m.entries) { entries = m.entries; msg = `${auto}. Plang „${plan.summary}“: ${m.found} Reps an de Runde fonnt, d'Runden dertëscht sinn d'Pausen.`; }
         else if (/^GPX/.test(lapSrc)) { entries = copy(); err = true; msg = `${auto}. De Plang „${plan.summary}“ ka net an de km-Splits gesicht ginn.`; }
         else { entries = copy(); err = true;
                msg = `${auto}. De Plang „${plan.summary}“ passt net op d'Runden (${m.found} vu ${nPlan} Reps fonnt), dofir automatesch Erkennung. Plang verbesseren oder eidel maachen.`; }
@@ -1649,8 +1682,8 @@
       }
       msg += lapInfo + dTxt;
     } else if (nPlan) {
-      entries = plan.entries;
-      msg = `Plang: ${plan.summary} (${nPlan} Reps).${dTxt} Fir d'Zäiten kann een elo nach d'FIT-Datei oder e Screenshot vun der Auer derbäi zéien.`;
+      entries = minPlan(plan.entries);
+      msg = `Plang: ${plan.summary} (${entries.filter(e => e.type === 'rep').length} Reps).${dTxt} Fir d'Zäiten kann een elo nach d'FIT-Datei oder e Screenshot vun der Auer derbäi zéien.`;
     } else {
       entries = [];
       if ($('impPlan').value.trim()) { msg = 'Keng Reps am Plang fonnt.'; err = true; }
