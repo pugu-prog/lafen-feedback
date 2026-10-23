@@ -246,7 +246,7 @@
     <div class="calc span5" id="pdfName"></div>
 
     <label for="name">Num</label>
-    <input id="name" data-k="name">
+    <input id="name" data-k="name" autocorrect="off" spellcheck="false">
     <label for="paceThr">Pace Schwell</label>
     <div><input id="paceThr" data-k="paceThr" class="num tm" placeholder="4:50,0"></div>
     <label for="hrThr">HR Schwell</label>
@@ -259,7 +259,7 @@
     <input id="clock" data-k="clock" type="time">
 
     <label for="training">Training</label>
-    <input id="training" data-k="training" class="span5" placeholder="z.B. 4x1600">
+    <input id="training" data-k="training" autocorrect="off" spellcheck="false" class="span5" placeholder="z.B. 4x1600">
     <label for="surface">Ënnergrond</label>
     <input id="surface" data-k="surface" class="span5" placeholder="Piste, Stroos, Bësch …">
     <label for="shoeBrand">Schung</label>
@@ -272,14 +272,14 @@
     <span class="rackrow"></span>
     <div class="span5 rack rackrow" id="rack"></div>
     <label for="nutrition">Nutritioun</label>
-    <input id="nutrition" data-k="nutrition" class="span3">
+    <input id="nutrition" data-k="nutrition" autocorrect="off" spellcheck="false" class="span3">
     <span style="grid-column: span 2"></span>
     <label for="partner">Trainingspartner</label>
-    <input id="partner" data-k="partner" class="span3">
+    <input id="partner" data-k="partner" autocorrect="off" spellcheck="false" class="span3">
     <span style="grid-column: span 2"></span>
 
     <label for="place">Plaz</label>
-    <input id="place" data-k="place" class="span3" placeholder="Diekirch" title="Fir d'Wieder; bei engem FIT-Import gëtt d'GPS-Startplaz geholl">
+    <input id="place" data-k="place" autocorrect="off" spellcheck="false" class="span3" placeholder="Diekirch" title="Fir d'Wieder; bei engem FIT-Import gëtt d'GPS-Startplaz geholl">
     <span style="grid-column: span 2"></span>
     <label for="temp">Temperatur</label>
     <div class="unit"><input id="temp" data-k="temp" class="num" inputmode="decimal"><span>°C</span></div>
@@ -368,7 +368,7 @@
   <div class="comment">
     <b>Kommentar:</b>
     <div>
-      <textarea data-k="comment" id="comment"></textarea>
+      <textarea data-k="comment" id="comment" autocorrect="off" spellcheck="false"></textarea>
       <div class="commentprint" id="commentPrint"></div>
     </div>
   </div>
@@ -407,7 +407,7 @@
   <div id="impDays"></div>
   <div class="row">
     <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Plang als Text</b></label>
-    <input id="impPlan" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
+    <input id="impPlan" autocorrect="off" spellcheck="false" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
   </div>
   <details>
     <summary>Schreifweis fir Trainingspläng</summary>
@@ -555,7 +555,7 @@
         <td class="in cs" data-c="hr"><input data-r="${i}" data-f="hr" class="num" inputmode="numeric"></td>
         <td></td>
         <td class="cs" data-c="lac"><input data-r="${i}" data-f="lac" class="num" inputmode="decimal"></td>
-        <td><input data-r="${i}" data-f="note"></td>
+        <td><input data-r="${i}" data-f="note" autocorrect="off" spellcheck="false"></td>
         <td class="del"><button data-del="${i}" title="Dës Rep läschen">×</button></td>
       </tr>
       <tr class="pause" data-i="${i}">
@@ -565,7 +565,7 @@
         <td></td>
         <td class="in cs" data-c="phr"><input data-r="${i}" data-f="pHr" class="num" inputmode="numeric"></td>
         <td class="cs" data-c="lac"><input data-r="${i}" data-f="pLac" class="num" inputmode="decimal"></td>
-        <td><input data-r="${i}" data-f="pNote"></td>
+        <td><input data-r="${i}" data-f="pNote" autocorrect="off" spellcheck="false"></td>
         <td class="del"></td>
       </tr>`).join('');
     rowsEl.querySelectorAll('input[data-f]').forEach(el => el.value = S.reps[el.dataset.r][el.dataset.f] ?? '');
@@ -1554,7 +1554,7 @@
         <td class="in"><input data-p="dist" class="num"></td>
         <td class="in"><input data-p="time" class="num"></td>
         <td class="in"><input data-p="hr" class="num" inputmode="numeric"></td>
-        <td><input data-p="note"></td>
+        <td><input data-p="note" autocorrect="off" spellcheck="false"></td>
       </tr>`).join('');
     tb.querySelectorAll('input[data-p]').forEach(el => el.value = entries[el.closest('tr').dataset.i][el.dataset.p]);
     $('impPrevWrap').hidden = !entries.length;
