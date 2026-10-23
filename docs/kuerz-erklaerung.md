@@ -48,7 +48,7 @@ Wann de Plang esou geschriwwe gëtt, liest d'Tool en ouni Feeler: eng Zeil pro S
 | `4x(1600-1200) (60s)` | Serie: 1600, 1200, 1600, 1200 … mat 60 s Paus |
 | `8min threshold @ 4:50` | Rep no Zäit; d'Zil-Pace kënnt an de Kommentar |
 | `p90s` (oder `90s` eleng) | Paus nom Block, op enger eegener Zeil |
-| `5x30s rop (rof)` | Hills: rop lafen, rof trabéieren, direkt déi nächst; d'Paus huet keng fix Zäit |
+| `5x30s rop (rof)` | Hills: rop lafen, rof, direkt déi nächst; d'Paus huet keng fix Zäit |
 
 Beispill fir e Freideg:
 

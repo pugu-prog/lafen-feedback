@@ -418,7 +418,7 @@
       <code>3-5x(800 p45s 600 p30s 400)</code> 3 bis 5 Serie mat Pausen an der Serie (<code>p90s</code> drënner = Paus tëscht de Serien) ·
       <code>8min threshold @ 4:50</code> Rep no Zäit, Zil-Pace als Kommentar ·
       <code>p90s</code> oder <code>90s</code> eleng op enger Zeil = Paus nom Block ·
-      <code>5x30s rop (rof)</code> Hills: rop lafen, rof trabéieren, direkt déi nächst.
+      <code>5x30s rop (rof)</code> Hills: rop lafen, rof, direkt déi nächst.
       <br>Beispill: <code>4km WU · 5x60s rop (rof) · p90s · 8min threshold · p90s · 5x30s rop (rof) · p90s · 6min threshold · 2km CD</code>
     </div>
   </details>
@@ -1083,7 +1083,7 @@
           const opt = k >= nMin ? { opt: true, blk, ser: blk * 100 + k } : { blk, ser: blk * 100 + k };
           out.push(E('rep', Object.assign({ dist: it.dist ? fmtNum(it.dist) : '', time: it.time ? fmtMS(it.time) : '', note }, opt)));
           const isLast = k === n - 1 && idx === its.length - 1, endSer = idx === its.length - 1;
-          if (!isLast && down) out.push(E('pause', { note: 'rof trabéieren' }));
+          if (!isLast && down) out.push(E('pause', { note: 'rof' }));
           else if (!isLast && !endSer) out.push(E('pause', Object.assign({ time: tm(inner[idx] ?? (serie ? NaN : pause)) }, opt)));
           else if (!isLast) out.push(E('pause', Object.assign({ time: tm(pause), sp: blk }, k + 1 >= nMin ? { opt: true, blk } : {})));
           // the bracket pause also follows the block ("5x60s hills (90s Paus)" → 8min threshold); dropped at the end if nothing follows
@@ -1525,7 +1525,7 @@
         } else Object.assign(r, { pTime: e.time, pHr: e.hr, pNote: e.note });
       }
     });
-    pd.forEach((x, r) => { r.pNote = (x.down ? 'rof ' : '') + fmtNum(Math.round(x.m)) + ' m' + (x.down ? '' : ' getrabt'); });
+    pd.forEach((x, r) => { r.pNote = (x.down ? 'rof ' : '') + fmtNum(Math.round(x.m)) + ' m'; });
     if (!reps.length) return false;
     S.reps = reps;
     if (training) S.training = training;                       // plan import: the plan names the session
@@ -1609,7 +1609,7 @@
   }
   // plan reps → laps: each planned rep takes the next lap(s) whose distance (or duration) is within 15 % of the
   // target; several laps without a pause in between can form one rep (auto lap 1000 m + 631 m = 8 min threshold).
-  // Where the plan has a pause after a rep (also "rof trabéieren" on hills), at least one lap lies in between.
+  // Where the plan has a pause after a rep (also "rof" on hills), at least one lap lies in between.
   function mergePlan(laps, plan) {
     const steps = [];
     plan.forEach(e => {
