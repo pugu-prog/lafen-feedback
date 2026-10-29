@@ -157,6 +157,8 @@
     table { min-width: 0; }
     th, td { height: 20px; }
     textarea { display: none; }
+    /* the comment stays in one piece: rather all of it on the next page than half a line on each */
+    .comment, .commentprint, .summary { break-inside: avoid; page-break-inside: avoid; }
     .commentprint { display: block !important; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
     .tablewrap { overflow: visible; }
   }
