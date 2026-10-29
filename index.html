@@ -159,6 +159,7 @@
     textarea { display: none; }
     /* the comment stays in one piece: rather all of it on the next page than half a line on each */
     .comment, .commentprint, .summary { break-inside: avoid; page-break-inside: avoid; }
+    .commentprint { orphans: 3; widows: 3; -webkit-box-decoration-break: clone; box-decoration-break: clone; }   /* longer than a page: split between lines, each part framed */
     .commentprint { display: block !important; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
     .tablewrap { overflow: visible; }
   }
