@@ -441,6 +441,11 @@
   <div class="row" id="impRoundRow" hidden>
     <label><input type="checkbox" id="impRound" style="width:auto"> GPS-Distanz vun de Reps op déi ronn Distanz setzen (Piste: 1612 m → 1600 m)</label>
   </div>
+  <div class="row" id="impLagRow" hidden title="De Puls reagéiert verspéit: nom Enn vun der Rep klëmmt e nach, no der Paus fält e nach. Just fir FIT-Dateien.">
+    <label><input type="checkbox" id="impLag" style="width:auto"> Puls-Nolaf (Test): Max HR vun der Rep a Min HR vun der Paus</label>
+    <select id="impLagS" aria-label="Sekonnen" style="width:auto"><option>5</option><option selected>10</option><option>15</option><option>20</option></select>
+    <span>s méi wäit sichen</span>
+  </div>
   <div id="impPrevWrap" hidden>
     <table id="impPrev">
       <thead><tr><th style="width:90px">Typ</th><th>Dist.</th><th>Zäit</th><th title="Rep: héchst HR, Paus: déifst HR">HR (Rep max · Paus min)</th><th style="text-align:left">Kommentar</th></tr></thead>
@@ -464,7 +469,7 @@
   const defaults = () => ({
     name:'', paceThr:'', hrThr:'', date:new Date().toISOString().slice(0,10), clock:'',
     training:'', surface:'', shoe:'', shoeBrand:'', shoeModel:'', shoeVer:'', nutrition:'', partner:'', temp:'', wind:'',
-    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', tenths:false, intDist:false, comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
+    lacMin:'1,5', lacMax:'5,0', rPaceMin:'', rPaceMax:'', rHrMin:'', rHrMax:'', rPhrMin:'', rPhrMax:'', tenths:false, intDist:false, hrLag:0, comment:'', place:'Diekirch', wxLat:'', wxLon:'', wxAuto:null,
     reps: Array.from({length:6}, blankRep)
   });
 
@@ -758,7 +763,7 @@
     if (!confirm('Neien Training ufänken? Num, Schwellen, MIN/MAX-Wäerter, Schong a Laktat-Grenzen bleiwen.')) return;
     const keep = {name:S.name, paceThr:S.paceThr, hrThr:S.hrThr, shoe:S.shoe, shoeBrand:S.shoeBrand, shoeModel:S.shoeModel,
                   shoeVer:S.shoeVer, lacMin:S.lacMin, lacMax:S.lacMax, place:S.place,
-                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax, tenths:S.tenths, intDist:S.intDist};
+                  rPaceMin:S.rPaceMin, rPaceMax:S.rPaceMax, rHrMin:S.rHrMin, rHrMax:S.rHrMax, rPhrMin:S.rPhrMin, rPhrMax:S.rPhrMax, tenths:S.tenths, intDist:S.intDist, hrLag:S.hrLag};
     S = Object.assign(defaults(), keep);
     fillMeta(); buildRows(); calc(); showTimes();
   };
@@ -1203,7 +1208,7 @@
       const hrRep = l.hrMax ?? l.hrAvg, hrPause = l.hrMin ?? l.hrAvg;
       const hr = type === 'pause' ? hrPause : hrRep;
       return E(type, { dist: isFinite(l.d) ? fmtNum(Math.round(l.d * 10) / 10) : '', time: fmtCs(l.t),
-        hr: hr != null ? String(Math.round(hr)) : '', gps: l.d, stop: !!l.stop,
+        hr: hr != null ? String(Math.round(hr)) : '', gps: l.d, stop: !!l.stop, win: l.a != null && l.b != null ? [l.a, l.b] : null,
         hrs: [hrRep, hrPause].filter(v => v != null).map(Math.round) });
     });
   }
@@ -1311,13 +1316,13 @@
     const out = [];
     const pause = (t, a, b, back) => {          // HR: lowest recorded while resting, else the HR when running again
       const h = hrIn(a, b);
-      out.push({ d: NaN, t, hrMin: h.length ? Math.min(...h) : hrBack(back), kind: 'pause', stop: true });
+      out.push({ d: NaN, t, hrMin: h.length ? Math.min(...h) : hrBack(back), kind: 'pause', stop: true, a, b });
     };
     for (const l of laps) {
       const intKind = !useInt ? '' : l.intensity === 1 || l.intensity === 4 ? 'pause' : l.intensity === 2 || l.intensity === 3 ? 'skip' : 'rep';
       if (l.start == null || l.end == null || !R.length) {
         const r = l.start != null && l.end != null ? hrRange(recs, l.start, l.end) : {};
-        out.push(Object.assign(l, { hrMin: l.hrMin ?? r.mn, hrMax: l.hrMax ?? r.mx, kind: intKind })); continue;
+        out.push(Object.assign(l, { hrMin: l.hrMin ?? r.mn, hrMax: l.hrMax ?? r.mx, kind: intKind, a: l.start, b: l.end })); continue;
       }
       const st = stops.find(x => x.a >= l.start - 2 && x.a < l.end);
       const runA = st ? st.b : l.start;
@@ -1336,7 +1341,7 @@
       if (lead || trail) { const d0 = distAt(a), d1 = distAt(b); if (d0 != null && d1 != null) d = d1 - d0; }
       const h = hrIn(a, b);
       out.push({ d, t: l.t - lead - trail, hrAvg: l.hrAvg, hrMax: h.length ? Math.max(...h) : l.hrMax,
-                 hrMin: h.length ? Math.min(...h) : l.hrMin, kind: intKind });
+                 hrMin: h.length ? Math.min(...h) : l.hrMin, kind: intKind, a, b });
       if (trail) pause(trail, last, l.end, l.end);
     }
     // a few metres of walking after the last stop (e.g. 6 m) are no lap
@@ -1347,6 +1352,7 @@
       if (x.kind !== 'pause' && nb && x.t < 10 && !(x.d >= 20)) {
         nb.t += x.t;                              // its HR too: the lowest HR is often in the last seconds of the rest
         if (x.hrMin != null && !(nb.hrMin <= x.hrMin)) nb.hrMin = x.hrMin;
+        if (x.a != null && nb.a != null) { nb.a = Math.min(nb.a, x.a); nb.b = Math.max(nb.b, x.b); }
         out.splice(i, 1);
       }
     }
@@ -1363,10 +1369,12 @@
       if (!Array.isArray(c)) { res.push(c); return; }
       if (merged && auto(c)) {
         const hm = c.map(x => x.hrMax).filter(v => v != null);
-        res.push({ d: c.reduce((s, x) => s + (x.d || 0), 0), t: c.reduce((s, x) => s + x.t, 0), hrMax: hm.length ? Math.max(...hm) : undefined, kind: '' });
+        res.push({ d: c.reduce((s, x) => s + (x.d || 0), 0), t: c.reduce((s, x) => s + x.t, 0), hrMax: hm.length ? Math.max(...hm) : undefined, kind: '',
+                   a: c[0].a, b: c[c.length - 1].b });
       } else res.push(...c);
     });
     laps.splice(0, laps.length, ...res);
+    laps.recs = recs.filter(r => r.hr > 0).map(r => ({ ts: r.ts, hr: r.hr }));   // for the HR delay option
     meta.stopped = stops.length > 0 || res.some(x => x.stop);
     laps.meta = meta;
     return laps;
@@ -1572,7 +1580,9 @@
     const tr = e.target.closest('tr'), ent = entries[tr.dataset.i], p = e.target.dataset.p;
     if (p !== 'type') { ent[p] = e.target.value; return; }
     ent.type = e.target.value; tr.className = 't-' + ent.type;
-    if (ent.hrs.length) { ent.hr = String(ent.type === 'pause' ? Math.min(...ent.hrs) : Math.max(...ent.hrs)); tr.querySelector('[data-p=hr]').value = ent.hr; }
+    if (ent.hrs.length) ent.hr = String(ent.type === 'pause' ? Math.min(...ent.hrs) : Math.max(...ent.hrs));
+    lagHR([ent]);
+    tr.querySelector('[data-p=hr]').value = ent.hr;
     renderPreview();
   });
   // two sources can be combined: the plan (part 1 / field "Plang als Text": what was planned) and the laps (watch file, Strava or
@@ -1602,7 +1612,7 @@
       if (dayBlocks.length === 1) { pickDay(0); return; }          // one day named → its date too
       $('impPlan').value = text.split('\n').map(l => l.trim()).filter(Boolean).join('; ');
     } else {
-      lapSlot = parseLaps(text); lapSrc = 'Screenshot'; lapInfo = ''; lapName ||= 'Screenshot';
+      lapSlot = parseLaps(text); lapSrc = 'Screenshot'; lapRecs = null; $('impLagRow').hidden = true; lapInfo = ''; lapName ||= 'Screenshot';
     }
     combine();
   }
@@ -1655,7 +1665,8 @@
         const hrs = part.flatMap(x => x.e.type === 'pause' ? [] : x.e.hrs.length ? [Math.max(...x.e.hrs)] : x.e.hr ? [+x.e.hr] : []);
         const d = part.reduce((s, x) => s + (x.d || 0), 0), t = part.reduce((s, x) => s + (x.t || 0), 0);
         out.push(E('rep', { dist: isFinite(r.d) ? fmtNum(r.d) : fmtNum(Math.round(d * 10) / 10), time: fmtCs(t),
-          hr: hrs.length ? String(Math.max(...hrs)) : '', hrs, note: r.note || '' }));
+          hr: hrs.length ? String(Math.max(...hrs)) : '', hrs, note: r.note || '',
+          win: part[0].e.win && part[part.length - 1].e.win ? [part[0].e.win[0], part[part.length - 1].e.win[1]] : null }));
         i = b; continue;
       }
       const type = i > first && i < last ? 'pause' : 'skip', o = Object.assign({}, L[i].e, { type });
@@ -1665,6 +1676,18 @@
       out.push(o);
     }
     return { found: groups.length, entries: out };
+  }
+  // option „Puls-Nolaf“ (test): the heart rate lags behind. After a rep it still rises for a few seconds, after a rest it
+  // still falls while the next rep has started. Max HR of a rep / Min HR of a pause then look N s further (FIT files only).
+  let lapRecs = null;
+  function lagHR(list) {
+    const N = +S.hrLag || 0;
+    if (!N || !lapRecs) return;
+    list.forEach(e => {
+      if (!e.win || (e.type !== 'rep' && e.type !== 'pause')) return;
+      const [a, b] = e.win, h = lapRecs.filter(r => r.ts >= a && r.ts <= b + N).map(r => r.hr);
+      if (h.length) e.hr = String(e.type === 'rep' ? Math.max(...h) : Math.min(...h));
+    });
   }
   function combine() {
     const day = planDate || metaFields(impMeta).date || S.date;
@@ -1686,6 +1709,8 @@
         entries = copy();
         msg = `${auto}, dovun ${entries.filter(e => e.type === 'rep').length} Reps (automatesch erkannt). Méi sécher mam Plang derbäi (Feld 1 oder als Text, z.B. „4x1600 (60s)“); bei Hills ëmmer.`;
       }
+      lagHR(entries);
+      if (+S.hrLag && lapRecs) msg += ` Puls-Nolaf: HR ${S.hrLag} s méi wäit gesicht.`;
       msg += lapInfo + dTxt;
     } else if (nPlan) {
       entries = minPlan(plan.entries);
@@ -1712,6 +1737,8 @@
     });
     combine();
   };
+  const setLag = () => { S.hrLag = $('impLag').checked ? +$('impLagS').value : 0; calc(); combine(); };
+  $('impLag').onchange = setLag; $('impLagS').onchange = () => { if ($('impLag').checked) setLag(); };
   $('impDays').addEventListener('click', e => { if (e.target.dataset.d !== undefined) pickDay(+e.target.dataset.d); });
   document.querySelectorAll('input[name=impMode]').forEach(r => r.onchange = evaluate);
   $('impReparse').onclick = evaluate;
@@ -1731,6 +1758,7 @@
     $('impPlan').value = hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
     renderPreview();
     $('impRoundRow').hidden = true; $('impRound').checked = false;
+    lapRecs = null; $('impLagRow').hidden = true; $('impLag').checked = +S.hrLag > 0; if (+S.hrLag) $('impLagS').value = String(S.hrLag);
     $('impFilePlan').value = $('impFileLaps').value = ''; stravaUi();
     dlg.showModal();
   };
@@ -1790,6 +1818,7 @@
         status('Aktivitéit gëtt gelies …');
         const laps = await parseActivity(file, kind);
         lapSlot = lapsToEntries(laps); lapSrc = kind === 'gpx' ? 'GPX (km-Splits)' : 'Auer-Fichier'; lapName = file.name || lapSrc;
+        lapRecs = laps.recs || null; $('impLagRow').hidden = !lapRecs;
         impMeta = laps.meta || null;
         lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
         if (kind === 'gpx') lapInfo = ' ' + GPX_NOTE;
@@ -1917,6 +1946,7 @@
                hrMin: seg.length ? Math.min(...seg) : undefined, kind: '' };
     });
     if (!list.length) throw new Error('Dës Aktivitéit huet keng Runden.');
+    lapRecs = null; $('impLagRow').hidden = true;
     lapSlot = lapsToEntries(list); lapSrc = 'Strava'; lapInfo = ' Strava gëtt Zäite just op d\'Sekonn.';
     const a = stravaActs.find(x => String(x.id) === String(id));
     if (a) impMeta = { start: Date.parse(a.start_date) / 1000 - FIT_EPOCH, tzOffset: (Date.parse(a.start_date_local) - Date.parse(a.start_date)) / 1000,
