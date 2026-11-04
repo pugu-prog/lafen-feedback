@@ -1394,6 +1394,44 @@
     });
     if (!laps.length) throw new Error('Am TCX-Fichier si keng Runden.');
     if (!laps.some(l => l.kind === 'pause')) laps.forEach(l => l.kind = '');
+    // watch stopped in the rests (no Resting laps): TCX keeps no timer events, only a gap between two trackpoints
+    // (≥ 10 s, hardly any metres). Gap = pause, the running part = rep; a few seconds next to a gap belong to the pause.
+    if (!laps.some(l => l.kind === 'pause')) {
+      const out = [];
+      kids(doc, 'Lap').forEach((lap, n) => {
+        const l = laps[n], pts = kids(lap, 'Trackpoint').map(tp => ({ ts: Date.parse((kids(tp, 'Time')[0] || {}).textContent) / 1000,
+          d: val(tp, 'DistanceMeters'), hr: (h => h ? val(h, 'Value') : null)(kids(tp, 'HeartRateBpm')[0]) })).filter(q => isFinite(q.ts));
+        const cut = [];
+        for (let i = 1; i < pts.length; i++) {
+          const dt = pts[i].ts - pts[i - 1].ts, dd = pts[i].d != null && pts[i - 1].d != null ? pts[i].d - pts[i - 1].d : 0;
+          if (dt >= 10 && dd < dt * 0.5) cut.push(i);
+        }
+        // only when the watch was really stopped: the lap lasted longer than its timer time (a GPS dropout keeps ticking)
+        const gapT = cut.reduce((s, i) => s + pts[i].ts - pts[i - 1].ts, 0), el = pts.length ? pts[pts.length - 1].ts - pts[0].ts : 0;
+        if (!cut.length || !(el - l.t >= 0.8 * gapT)) { out.push(l); return; }
+        const segs = []; let a = 0;
+        for (const i of cut) { segs.push(pts.slice(a, i)); segs.push({ gap: pts[i].ts - pts[i - 1].ts, hr: [pts[i - 1].hr, pts[i].hr].filter(v => v > 0) }); a = i; }
+        segs.push(pts.slice(a));
+        const run = s => Array.isArray(s) && s.length > 1 && (s[s.length - 1].ts - s[0].ts >= 10 || (s[s.length - 1].d ?? 0) - (s[0].d ?? 0) >= 20);
+        const moving = segs.filter(run), mvT = moving.reduce((s, x) => s + x[x.length - 1].ts - x[0].ts, 0);
+        segs.forEach(s => {
+          if (!Array.isArray(s)) {                 // a gap: pause (joined with the one before when only a few seconds lie between)
+            const p = out[out.length - 1];
+            if (p && p.kind === 'pause' && p.tcxGap) { p.t += s.gap; p.hrMin = Math.min(p.hrMin ?? Infinity, ...s.hr); }
+            else out.push({ d: NaN, t: s.gap, hrMin: s.hr.length ? Math.min(...s.hr) : undefined, kind: 'pause', stop: true, tcxGap: true });
+            return;
+          }
+          if (!run(s)) { const p = out[out.length - 1]; if (p && p.tcxGap && s.length) p.t += s[s.length - 1].ts - s[0].ts; return; }
+          const el = s[s.length - 1].ts - s[0].ts, hr = s.map(q => q.hr).filter(v => v > 0);
+          const d = moving.length === 1 ? l.d : (s[s.length - 1].d ?? 0) - (s[0].d ?? 0);
+          out.push({ d, t: moving.length === 1 ? l.t : l.t * el / mvT, hrAvg: l.hrAvg, hrMax: hr.length ? Math.max(...hr) : l.hrMax,
+                     hrMin: hr.length ? Math.min(...hr) : l.hrMin, kind: '' });
+        });
+      });
+      // a few metres after the last stop (0,6 s, 5 m) are no lap
+      while (out.length > 1 && out[out.length - 1].kind !== 'pause' && out[out.length - 1].t < 5 && !(out[out.length - 1].d >= 30)) out.pop();
+      if (out.some(x => x.tcxGap)) { out.forEach(x => delete x.tcxGap); laps.splice(0, laps.length, ...out); }
+    }
     // start time (UTC, shown in this browser's time zone) and start position for date, time of day, place and weather
     const first = kids(doc, 'Lap')[0], st = Date.parse(first.getAttribute('StartTime') || (kids(doc, 'Id')[0] || {}).textContent);
     const pos = kids(doc, 'Position')[0];
