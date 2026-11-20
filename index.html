@@ -134,10 +134,10 @@
   .wxnote { font-size: 12px; color: var(--muted); }
 
   @media screen and (max-width: 720px) {
-    .sheet { padding: 14px 16px; margin: 0; box-shadow: none; }
-    .meta { grid-template-columns: 110px 1fr; }
-    .meta .span2, .meta .span3, .meta .span5 { grid-column: span 1; }
-    .meta label { text-align: left; }
+    .sheet:not(.pdfsheet) { padding: 14px 16px; margin: 0; box-shadow: none; }
+    .sheet:not(.pdfsheet) .meta { grid-template-columns: 110px 1fr; }
+    .sheet:not(.pdfsheet) .meta .span2, .sheet:not(.pdfsheet) .meta .span3, .sheet:not(.pdfsheet) .meta .span5 { grid-column: span 1; }
+    .sheet:not(.pdfsheet) .meta label { text-align: left; }
   }
 
   @page { size: A4 portrait; margin: 12mm 10mm; }
@@ -163,6 +163,11 @@
     .commentprint { display: block !important; white-space: pre-wrap; border: 1px solid var(--input-line); background: var(--input); padding: 4px 6px; min-height: 40px; }
     .tablewrap { overflow: visible; }
   }
+
+  #pdfMsg { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60; display: flex; gap: 10px; align-items: center; justify-content: space-between;
+            background: var(--sb-blue); color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: 0 4px 20px rgba(0,0,0,.3); }
+  #pdfMsg button { background: var(--sb-yellow); border-color: var(--sb-yellow); color: var(--sb-blue); font-weight: 600; flex: none; }
+  #pdfMsg button.x { background: transparent; border-color: rgba(255,255,255,.6); color: #fff; padding: 2px 10px; }
 
   /* Import dialog */
   dialog#imp {
@@ -786,10 +791,116 @@
   // Inside the SauerBeen app (WebView) window.print() does nothing: the app prints natively with the print CSS.
   // anonymous click counter (only a number per button, nothing about the runner or the training); live site only
   const countUse = k => { if (location.hostname === 'pugu-prog.github.io') fetch('https://abacus.jasoncameron.dev/hit/lafen-sauerbeen/' + k, { keepalive: true }).catch(() => {}); };
+  // ---- PDF ouni Drockdialog: iPhone / Web-App / In-App-Browser (window.print() mécht do dacks näischt) ----
+  // The print layout (the @media print rules) is rendered off-screen, cut into A4 pages (never through a table row, never through a
+  // comment line) and handed to the share sheet (iPhone: „In Dateien sichern“, WhatsApp, Mail) or downloaded. Fallback: window.print().
+  const JSPDF = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  const H2C = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  let pdfLibs = null;
+  const loadPdfLibs = () => pdfLibs || (pdfLibs = Promise.all([window.jspdf ? 0 : loadScript(JSPDF), window.html2canvas ? 0 : loadScript(H2C)]).catch(e => { pdfLibs = null; throw e; }));
+  // Which devices skip the print dialog: iOS / iPadOS, touch phones, installed web apps, in-app browsers. Desktop keeps the print dialog.
+  const jsPdfDefault = () => {
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+    const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|Snapchat|LinkedInApp|; wv\)|GSA\//.test(ua);
+    const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820;
+    return ios || standalone || inApp || phone;
+  };
+  const msgBox = (text, btn) => {
+    let b = $('pdfMsg');
+    if (!b) { b = document.createElement('div'); b.id = 'pdfMsg'; b.className = 'noprint'; document.body.appendChild(b); }
+    b.innerHTML = ''; const t = document.createElement('span'); t.textContent = text; b.appendChild(t);
+    if (btn) { const x = document.createElement('button'); x.textContent = btn[0]; x.onclick = btn[1]; b.appendChild(x); }
+    const c = document.createElement('button'); c.textContent = '×'; c.className = 'x'; c.setAttribute('aria-label', 'Zoumaachen'); c.onclick = () => b.remove(); b.appendChild(c);
+    return b;
+  };
+  // the print rules, scoped to #pdfhost so the real page is not touched
+  const printCss = () => {
+    let out = '';
+    const scope = sel => sel.split(',').map(x => { x = x.trim(); return x === '*' ? '#pdfhost *' : x === 'body' ? '#pdfhost' : '#pdfhost ' + x; }).join(',');
+    for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch { continue; }
+      for (const r of rules) if (r.type === CSSRule.MEDIA_RULE && /print/.test(r.media.mediaText)) for (const q of r.cssRules) if (q.type === CSSRule.STYLE_RULE) out += scope(q.selectorText) + '{' + q.style.cssText + '}\n'; }
+    return out;
+  };
+  async function buildPdf() {
+    await loadPdfLibs();
+    const CW = 718, PAGE_W = 210, M = 10, MV = 12;                 // content width 190 mm = 718 px; page margins as in @page
+    const pageH = Math.floor(CW * (297 - 2 * MV) / (PAGE_W - 2 * M));
+    const host = document.createElement('div'); host.id = 'pdfhost';
+    host.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + CW + 'px;background:#fff;color:var(--text)';
+    const st = document.createElement('style'); st.textContent = printCss() + '#pdfhost .printonly{display:block}#pdfhost .ptitle{display:flex!important}#pdfhost .commentprint{display:block!important}#pdfhost .tablewrap{overflow:visible}#pdfhost td input{padding:0 6px 4px;line-height:14px}#pdfhost .meta input{padding:0 6px 4px;line-height:14px;height:22px}#pdfhost .unit input{padding-right:38px}';
+    const clone = document.querySelector('.sheet').cloneNode(true); clone.classList.add('pdfsheet');
+    const src = document.querySelectorAll('.sheet input, .sheet textarea'), dst = clone.querySelectorAll('input, textarea');
+    dst.forEach((e, i) => { if (e.tagName === 'TEXTAREA') e.textContent = src[i].value; else e.setAttribute('value', src[i].value); });
+    host.appendChild(st); host.appendChild(clone); document.body.appendChild(host);
+    try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      const base = host.getBoundingClientRect().top, H = host.scrollHeight;
+      // allowed cut positions (px from the top): before table rows, summary, comment; inside a comment taller than one page: between its lines
+      const cuts = new Set();
+      host.querySelectorAll('tr, .summary, .commentprint, .comment').forEach(e => { if (e.offsetParent !== null) cuts.add(Math.round(e.getBoundingClientRect().top - base)); });
+      host.querySelectorAll('.commentprint').forEach(e => { if (e.offsetParent === null || e.getBoundingClientRect().height <= pageH) return;
+        const r = document.createRange(); r.selectNodeContents(e);
+        for (const q of r.getClientRects()) cuts.add(Math.round(q.top - base - 2)); });
+      const list = [...cuts].filter(y => y > 0).sort((a, b) => a - b);
+      const bounds = [0]; let y = 0;
+      while (H - y > pageH) { let c = 0; for (const v of list) if (v > y + 40 && v <= y + pageH) c = v; if (!c) c = y + pageH; bounds.push(c); y = c; }
+      bounds.push(H);
+      const shot = await html2canvas(host, { scale: 2, backgroundColor: '#fff', useCORS: true, logging: false, width: CW, windowWidth: 1280 });
+      const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+      const k = shot.width / CW;
+      for (let i = 0; i < bounds.length - 1; i++) {
+        const y0 = Math.round(bounds[i] * k), h = Math.max(1, Math.min(shot.height, Math.round(bounds[i + 1] * k)) - y0);
+        const c = document.createElement('canvas'); c.width = shot.width; c.height = h;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, h); g.drawImage(shot, 0, y0, shot.width, h, 0, 0, shot.width, h);
+        if (i) pdf.addPage();
+        pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', M, MV, PAGE_W - 2 * M, (PAGE_W - 2 * M) * h / shot.width, undefined, 'FAST');
+      }
+      return pdf.output('blob');
+    } finally { host.remove(); }
+  }
+  const pdfFileName = () => ((document.title || 'training').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'training') + '.pdf';
+  function downloadPdf(blob, name) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  }
+  async function sharePdf(blob, name) {                              // true = done, false = could not (try download)
+    const file = new File([blob], name, { type: 'application/pdf' });
+    if (!(navigator.canShare && navigator.canShare({ files: [file] }))) return false;
+    try { await navigator.share({ files: [file], title: name }); return true; }
+    catch (e) {
+      if (e && e.name === 'AbortError') return true;
+      if (e && e.name === 'NotAllowedError') {                       // the long rendering used up the tap: ask for a new one
+        msgBox('PDF ass fäerdeg.', ['PDF deelen / späicheren', async () => { try { await navigator.share({ files: [file], title: name }); $('pdfMsg')?.remove(); } catch (e2) { if (e2?.name !== 'AbortError') downloadPdf(blob, name); } }]);
+        return true;
+      }
+      return false;
+    }
+  }
+  let pdfBusy = false;
+  async function makePdf() {
+    if (pdfBusy) return; pdfBusy = true;
+    msgBox('PDF gëtt gemaach …');
+    try {
+      const blob = await buildPdf(), name = pdfFileName();
+      $('pdfMsg')?.remove();
+      if (!(await sharePdf(blob, name))) {
+        downloadPdf(blob, name);
+        msgBox('PDF gouf erofgelueden. Geet näischt? Maach dës Säit am Safari (oder Chrome) op.');
+      }
+    } catch (e) {
+      console.error("PDFERR " + (e && (e.message || e)) + " " + (e && e.stack));
+      msgBox('D\'PDF konnt net gemaach ginn (Internet?). Den Drock-Dialog gëtt opgemaach – wann dee näischt mécht, maach d\'Säit am Safari (oder Chrome) op.');
+      setTimeout(() => window.print(), 600);
+    } finally { pdfBusy = false; }
+  }
+  if (jsPdfDefault()) setTimeout(() => loadPdfLibs().catch(() => {}), 1500);   // preload, so the tap is still fresh for the share sheet
   $('btnPdf').onclick = () => {
     countUse('pdf');
     if (window.webkit?.messageHandlers?.sauerbeenPrint) window.webkit.messageHandlers.sauerbeenPrint.postMessage(document.title);
     else if (window.SauerBeenApp?.print) window.SauerBeenApp.print(document.title);
+    else if (jsPdfDefault() || new URLSearchParams(location.search).has('pdfjs')) makePdf();
     else window.print();
   };
 
