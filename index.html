@@ -1936,7 +1936,8 @@
     $('gotPlan').textContent = $('gotLaps').textContent = ''; $('zPlan').classList.remove('has'); $('zLaps').classList.remove('has');
     $('impText').value = '';
     // "4x1600 (60s)" already typed → used as plan; "5x60s hills + 8min threshold" (summary of an earlier import) = several steps
-    $('impPlan').value = hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
+    // only while the table is still empty: with reps already in it, "Training" belongs to THAT session (an old plan would be forced onto the new laps)
+    $('impPlan').value = !hasData() && hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
     renderPreview();
     $('impRoundRow').hidden = true; $('impRound').checked = false;
     lapRecs = null; $('impLagRow').hidden = true; $('impLag').checked = +S.hrLag > 0; if (+S.hrLag) $('impLagS').value = String(S.hrLag);
