@@ -419,6 +419,7 @@
   <div class="row">
     <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Plang als Text</b></label>
     <input id="impPlan" autocorrect="off" spellcheck="false" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
+    <button type="button" id="impPlanClear" title="Plang läschen" aria-label="Plang läschen" style="flex:none; padding:4px 11px">×</button>
   </div>
   <details>
     <summary>Schreifweis fir Trainingspläng</summary>
@@ -2008,6 +2009,8 @@
       if (h.length) e.hr = String(e.type === 'rep' ? Math.max(...h) : Math.min(...h));
     });
   }
+  // × next to the plan field: empty it, the reps then come from the watch laps alone
+  $('impPlanClear').onclick = () => { $('impPlan').value = ''; combine(); $('impPlan').focus(); };
   function combine() {
     const day = planDate || metaFields(impMeta).date || S.date;
     const plan = parsePlan($('impPlan').value, { friday: !!day && new Date(day + 'T12:00').getDay() === 5 });
@@ -2074,7 +2077,8 @@
     $('gotPlan').textContent = $('gotLaps').textContent = ''; $('zPlan').classList.remove('has'); $('zLaps').classList.remove('has');
     $('impText').value = '';
     // "4x1600 (60s)" already typed → used as plan; "5x60s hills + 8min threshold" (summary of an earlier import) = several steps
-    $('impPlan').value = hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
+    // only while the table is still empty: with reps already in it, "Training" belongs to THAT session (an old plan would be forced onto the new laps)
+    $('impPlan').value = !hasData() && hasXPlan(S.training) ? S.training.replace(/\s+\+\s+/g, '; ') : '';
     renderPreview();
     $('impRoundRow').hidden = true; $('impRound').checked = false;
     lapRecs = null; $('impLagRow').hidden = true; $('impLag').checked = +S.hrLag > 0; if (+S.hrLag) $('impLagS').value = String(S.hrLag);
