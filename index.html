@@ -792,10 +792,13 @@
   // anonymous click counter (only a number per button, nothing about the runner or the training); live site only
   const countUse = k => { if (location.hostname === 'pugu-prog.github.io') fetch('https://abacus.jasoncameron.dev/hit/lafen-sauerbeen/' + k, { keepalive: true }).catch(() => {}); };
   // ---- PDF ouni Drockdialog: iPhone / Web-App / In-App-Browser (window.print() mécht do dacks näischt) ----
-  // The print layout (the @media print rules) is rendered off-screen, cut into A4 pages (never through a table row, never through a
-  // comment line) and handed to the share sheet (iPhone: „In Dateien sichern“, WhatsApp, Mail) or downloaded. Fallback: window.print().
+  // 1. Vektor-PDF mat Text (pdfTeX als WebAssembly, Engine vum PPREN-Repo): d'Drockansicht (@media print) gëtt an engem onsichtbaren
+  //    Klon ausgemooss (Positiounen, Faarwen, Rummen, Text) a Linn fir Linn als LaTeX-Säit geschriwwen.
+  // 2. Falls dat net geet (zevill Späicher, offline …): Bild-PDF (jsPDF + html2canvas). 3. Falls och dat net geet: window.print().
+  // Ausgab: navigator.share (iPhone: In Dateien sichern, WhatsApp, Mail), soss Download.
   const JSPDF = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   const H2C = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  const LATEX_BASE = new URLSearchParams(location.search).get('latexbase') || 'https://pugu-prog.github.io/ppren-latex/';
   let pdfLibs = null;
   const loadPdfLibs = () => pdfLibs || (pdfLibs = Promise.all([window.jspdf ? 0 : loadScript(JSPDF), window.html2canvas ? 0 : loadScript(H2C)]).catch(e => { pdfLibs = null; throw e; }));
   // Which devices skip the print dialog: iOS / iPadOS, touch phones, installed web apps, in-app browsers. Desktop keeps the print dialog.
@@ -823,39 +826,172 @@
       for (const r of rules) if (r.type === CSSRule.MEDIA_RULE && /print/.test(r.media.mediaText)) for (const q of r.cssRules) if (q.type === CSSRule.STYLE_RULE) out += scope(q.selectorText) + '{' + q.style.cssText + '}\n'; }
     return out;
   };
-  async function buildPdf() {
-    await loadPdfLibs();
-    const CW = 718, PAGE_W = 210, M = 10, MV = 12;                 // content width 190 mm = 718 px; page margins as in @page
-    const pageH = Math.floor(CW * (297 - 2 * MV) / (PAGE_W - 2 * M));
+  const PDF_CW = 718, PDF_W = 210, PDF_M = 10, PDF_MV = 12;           // content width 190 mm = 718 px; page margins as in @page
+  // off-screen clone in print layout + page breaks (never through a table row, never through a comment line)
+  async function printHost(forImage) {
+    const pageH = Math.floor(PDF_CW * (297 - 2 * PDF_MV) / (PDF_W - 2 * PDF_M));
     const host = document.createElement('div'); host.id = 'pdfhost';
-    host.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + CW + 'px;background:#fff;color:var(--text)';
-    const st = document.createElement('style'); st.textContent = printCss() + '#pdfhost .printonly{display:block}#pdfhost .ptitle{display:flex!important}#pdfhost .commentprint{display:block!important}#pdfhost .tablewrap{overflow:visible}#pdfhost td input{padding:0 6px 4px;line-height:14px}#pdfhost .meta input{padding:0 6px 4px;line-height:14px;height:22px}#pdfhost .unit input{padding-right:54px}';
+    host.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + PDF_CW + 'px;background:#fff;color:var(--text)';
+    const st = document.createElement('style');
+    st.textContent = printCss() + '#pdfhost .printonly{display:block}#pdfhost .ptitle{display:flex!important}#pdfhost .commentprint{display:block!important}#pdfhost .tablewrap{overflow:visible}'
+      + (forImage ? '#pdfhost td input{padding:0 6px 4px;line-height:14px}#pdfhost .meta input{padding:0 6px 4px;line-height:14px;height:22px}#pdfhost .unit input{padding-right:54px}' : '');
     const clone = document.querySelector('.sheet').cloneNode(true); clone.classList.add('pdfsheet');
     const src = document.querySelectorAll('.sheet input, .sheet textarea'), dst = clone.querySelectorAll('input, textarea');
     dst.forEach((e, i) => { if (e.tagName === 'TEXTAREA') e.textContent = src[i].value; else e.setAttribute('value', src[i].value); });
     host.appendChild(st); host.appendChild(clone); document.body.appendChild(host);
+    if (document.fonts?.ready) await document.fonts.ready;
+    const base = host.getBoundingClientRect().top, H = host.scrollHeight;
+    // allowed cut positions (px from the top): before table rows, summary, comment; inside a comment taller than one page: between its lines
+    const cuts = new Set();
+    host.querySelectorAll('tr, .summary, .commentprint, .comment').forEach(e => { if (e.offsetParent !== null) cuts.add(Math.round(e.getBoundingClientRect().top - base)); });
+    host.querySelectorAll('.commentprint').forEach(e => { if (e.offsetParent === null || e.getBoundingClientRect().height <= pageH) return;
+      const r = document.createRange(); r.selectNodeContents(e);
+      for (const q of r.getClientRects()) cuts.add(Math.round(q.top - base - 2)); });
+    const list = [...cuts].filter(y => y > 0).sort((a, b) => a - b);
+    const bounds = [0]; let y = 0;
+    while (H - y > pageH) { let c = 0; for (const v of list) if (v > y + 40 && v <= y + pageH) c = v; if (!c) c = y + pageH; bounds.push(c); y = c; }
+    bounds.push(H);
+    return { host, base, bounds, pageH };
+  }
+
+  // ---------- 1. Vector PDF: pdfTeX (WebAssembly) ----------
+  const texOk = typeof WebAssembly === 'object' && typeof DecompressionStream === 'function' && typeof Worker === 'function';
+  let texWorker = null, texInit = null, texId = 0; const texOpen = {};
+  function texCall(msg) {
+    if (!texWorker) {
+      texWorker = new Worker('latex-worker.js?base=' + encodeURIComponent(LATEX_BASE));
+      texWorker.onmessage = ({ data }) => { const o = texOpen[data.id]; if (!o) return; delete texOpen[data.id]; data.ok ? o.res(data) : o.rej(Object.assign(new Error(data.error || 'LaTeX'), { log: data.log })); };
+      texWorker.onerror = e => { Object.values(texOpen).forEach(o => o.rej(new Error('Worker: ' + (e.message || e)))); for (const k in texOpen) delete texOpen[k]; texWorker = null; texInit = null; };
+    }
+    return new Promise((res, rej) => { const id = ++texId; texOpen[id] = { res, rej }; texWorker.postMessage(Object.assign({ id }, msg)); });
+  }
+  const texReady = () => texInit || (texInit = texCall({ typ: 'init' }).catch(e => { texInit = null; throw e; }));
+  const texEsc = s => {
+    let o = '';
+    for (const ch of String(s).normalize('NFC')) {
+      const c = ch.codePointAt(0);
+      if (ch === '\\') o += '\\textbackslash{}'; else if ('&%$#_{}'.includes(ch)) o += '\\' + ch; else if (ch === '~') o += '\\textasciitilde{}'; else if (ch === '^') o += '\\textasciicircum{}';
+      else if (ch === '∞') o += '$\\infty$'; else if (ch === '×') o += '$\\times$'; else if (ch === '−') o += '$-$'; else if (ch === '·') o += '\\textperiodcentered{}';
+      else if (c === 0xA0 || ch === '\u202F') o += '~'; else if (ch === '–' || ch === '—') o += '--'; else if (ch === '‚' ) o += ',';
+      else if (ch === '’' || ch === '‘') o += "'"; else if (ch === '“' || ch === '”' || ch === '„') o += '"'; else if (ch === '°') o += '\\textdegree{}';
+      else if (c >= 32 && c < 127) o += ch;
+      else if (c >= 0xC0 && c <= 0x17F || c >= 0xA1 && c <= 0xBF && ch !== '¤') o += ch;    // Latin-1 + Latin Extended-A (T1)
+      else { const b = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); o += /^[\x20-\x7e]+$/.test(b) ? b : '?'; }
+    }
+    return o;
+  };
+  const cssRgb = c => { const m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return null; const p = m[1].split(',').map(x => parseFloat(x)); if (p.length > 3 && p[3] === 0) return null; return p.slice(0, 3).map(Math.round).join(','); };
+  // lines of text in an element (browser line breaks): [{text, l, r, t, h}] in px relative to the host
+  function textLines(el, org) {
+    const out = [], tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n; (n = tw.nextNode());) {
+      const pe = n.parentElement; if (!pe || pe.closest('textarea,script,style,select,option')) continue;
+      const cs = getComputedStyle(pe); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const txt = n.nodeValue; let cur = null; const rg = document.createRange();
+      for (let i = 0; i < txt.length; i++) {
+        rg.setStart(n, i); rg.setEnd(n, i + 1);
+        const q = rg.getClientRects()[0]; if (!q || (q.width === 0 && /\s/.test(txt[i]))) continue;
+        if (txt[i] === '\n') { cur = null; continue; }
+        if (!cur || Math.abs(q.top - cur.t0) > 3) { cur = { text: '', l: q.left - org.x, r: q.right - org.x, t: q.top - org.y, t0: q.top, h: q.height, pe }; out.push(cur); }
+        cur.text += txt[i]; cur.r = q.right - org.x;
+      }
+    }
+    out.forEach(l => { l.text = l.text.replace(/\s+$/, ''); }); return out.filter(l => l.text.trim());
+  }
+  const texLaTeX = (pages, logoOk) => {
+    const k = 190 / PDF_CW, mm = v => (Math.round(v * k * 100) / 100);
+    let s = '\\documentclass[11pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{helvet}\n\\renewcommand{\\familydefault}{\\sfdefault}\n\\usepackage{xcolor}\n\\usepackage{graphicx}\n'
+      + '\\usepackage[a4paper,left=10mm,right=10mm,top=12mm,bottom=12mm]{geometry}\n\\pagestyle{empty}\\setlength{\\parindent}{0pt}\\setlength{\\topskip}{0pt}\\setlength{\\unitlength}{1mm}\n'
+      + '\\newcommand\\R[5]{\\put(#1,#2){\\textcolor[RGB]{#3}{\\rule{#4mm}{#5mm}}}}\n'
+      + '\\newcommand\\fs[1]{\\fontsize{#1pt}{#1pt}\\selectfont}\n\\begin{document}\n';
+    pages.forEach((ops, pi) => {
+      if (pi) s += '\\clearpage\n';
+      s += '\\noindent\\begin{picture}(0,0)\n';
+      for (const o of ops) {
+        if (o.t === 'rect') s += `\\R{${mm(o.x)}}{${-mm(o.y + o.h)}}{${o.c}}{${mm(o.w)}}{${mm(o.h)}}\n`;
+        else if (o.t === 'img') { if (logoOk) s += `\\put(${mm(o.x)},${-mm(o.y + o.h)}){\\includegraphics[width=${mm(o.w)}mm]{logo.png}}\n`; }
+        else {
+          const sz = Math.round(o.px * 0.72 * 100) / 100, body = `\\textcolor[RGB]{${o.c}}{\\fs{${sz}}${o.b ? '\\bfseries ' : ''}${texEsc(o.text)}}`;
+          const pos = o.a === 'r' ? `\\llap{${body}}` : o.a === 'c' ? `\\hbox to 0pt{\\hss ${body}\\hss}` : `\\rlap{${body}}`;
+          s += `\\put(${mm(o.x)},${-mm(o.y)}){${pos}}\n`;
+        }
+      }
+      s += '\\end{picture}\n';
+    });
+    return s + '\\end{document}\n';
+  };
+  async function buildLatexPdf() {
+    if (!texOk) throw new Error('kee WebAssembly');
+    const ready = texReady();
+    const { host, base, bounds } = await printHost(false);
     try {
-      if (document.fonts?.ready) await document.fonts.ready;
-      const base = host.getBoundingClientRect().top, H = host.scrollHeight;
-      // allowed cut positions (px from the top): before table rows, summary, comment; inside a comment taller than one page: between its lines
-      const cuts = new Set();
-      host.querySelectorAll('tr, .summary, .commentprint, .comment').forEach(e => { if (e.offsetParent !== null) cuts.add(Math.round(e.getBoundingClientRect().top - base)); });
-      host.querySelectorAll('.commentprint').forEach(e => { if (e.offsetParent === null || e.getBoundingClientRect().height <= pageH) return;
-        const r = document.createRange(); r.selectNodeContents(e);
-        for (const q of r.getClientRects()) cuts.add(Math.round(q.top - base - 2)); });
-      const list = [...cuts].filter(y => y > 0).sort((a, b) => a - b);
-      const bounds = [0]; let y = 0;
-      while (H - y > pageH) { let c = 0; for (const v of list) if (v > y + 40 && v <= y + pageH) c = v; if (!c) c = y + pageH; bounds.push(c); y = c; }
-      bounds.push(H);
-      const shot = await html2canvas(host, { scale: 2, backgroundColor: '#fff', useCORS: true, logging: false, width: CW, windowWidth: 1280 });
+      const org = host.getBoundingClientRect(), O = { x: org.left, y: org.top };
+      const prims = [];                                                   // everything the print layout draws, in px relative to the host
+      const rectOf = e => { const r = e.getBoundingClientRect(); return { x: r.left - O.x, y: r.top - O.y, w: r.width, h: r.height }; };
+      const walk = el => {
+        const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') return;
+        const tag = el.tagName;
+        if (tag === 'STYLE' || tag === 'SCRIPT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'DATALIST' || tag === 'BUTTON') return;
+        const r = rectOf(el);
+        if (r.w > 0 && r.h > 0 && el !== host) {
+          const bg = cssRgb(cs.backgroundColor); if (bg) prims.push({ t: 'rect', x: r.x, y: r.y, w: r.w, h: r.h, c: bg });
+          const coll = (tag === 'TD' || tag === 'TH') && getComputedStyle(el.closest('table')).borderCollapse === 'collapse';
+          const edge = (side, wd, col) => { const w = parseFloat(wd); if (!(w > 0) || cs['border' + side + 'Style'] === 'none') return; const c = cssRgb(col); if (!c) return; const hw = coll ? w / 2 : 0;
+            if (side === 'Top') prims.push({ t: 'rect', x: r.x - hw, y: r.y - hw, w: r.w + 2 * hw, h: w, c });
+            else if (side === 'Bottom') prims.push({ t: 'rect', x: r.x - hw, y: r.y + r.h - w + hw, w: r.w + 2 * hw, h: w, c });
+            else if (side === 'Left') prims.push({ t: 'rect', x: r.x - hw, y: r.y - hw, w, h: r.h + 2 * hw, c });
+            else prims.push({ t: 'rect', x: r.x + r.w - w + hw, y: r.y - hw, w, h: r.h + 2 * hw, c }); };
+          edge('Top', cs.borderTopWidth, cs.borderTopColor); edge('Bottom', cs.borderBottomWidth, cs.borderBottomColor);
+          edge('Left', cs.borderLeftWidth, cs.borderLeftColor); edge('Right', cs.borderRightWidth, cs.borderRightColor);
+          if (tag === 'IMG') prims.push({ t: 'img', x: r.x, y: r.y, w: r.w, h: r.h });
+          if (tag === 'INPUT' && el.type !== 'checkbox' && el.type !== 'radio' && el.type !== 'hidden' && el.type !== 'file' && String(el.value).trim()) {
+            const px = parseFloat(cs.fontSize), pl = parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth), pr = parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth);
+            const al = cs.textAlign === 'right' || cs.textAlign === 'end' ? 'r' : cs.textAlign === 'center' ? 'c' : 'l';
+            prims.push({ t: 'text', text: String(el.value), a: al, x: al === 'r' ? r.x + r.w - pr : al === 'c' ? r.x + r.w / 2 : r.x + pl, y: r.y + r.h / 2 + 0.364 * px, top: r.y, px, b: parseInt(cs.fontWeight) >= 600, c: cssRgb(cs.color) || '0,0,0' });
+          }
+        }
+        for (const ch of el.children) walk(ch);
+      };
+      for (const ch of host.querySelector('.sheet').children) walk(ch);
+      // text: every line of every text node
+      for (const l of textLines(host.querySelector('.sheet'), O)) {
+        const cs = getComputedStyle(l.pe), px = parseFloat(cs.fontSize), up = cs.textTransform === 'uppercase';
+        const ta = cs.textAlign, al = (ta === 'right' || ta === 'end') ? 'r' : ta === 'center' ? 'c' : 'l';
+        prims.push({ t: 'text', text: up ? l.text.toUpperCase() : l.text, a: al, x: al === 'r' ? l.r : al === 'c' ? (l.l + l.r) / 2 : l.l, y: l.t + 0.969 * px * (l.h / (1.21 * px)), top: l.t, px, b: parseInt(cs.fontWeight) >= 600, c: cssRgb(cs.color) || '0,0,0' });
+      }
+      // split on the pages
+      const pages = bounds.slice(0, -1).map((y0, i) => {
+        const y1 = bounds[i + 1], ops = [];
+        for (const p of prims) {
+          if (p.t === 'rect') { const a = Math.max(p.y, y0), b = Math.min(p.y + p.h, y1); if (b - a > 0.05) ops.push({ t: 'rect', x: p.x, y: a - y0, w: p.w, h: b - a, c: p.c }); }
+          else if (p.t === 'img') { if (p.y >= y0 - 1 && p.y < y1) ops.push({ t: 'img', x: p.x, y: p.y - y0, w: p.w, h: p.h }); }
+          else if (p.top >= y0 - 1 && p.top < y1) ops.push(Object.assign({}, p, { y: p.y - y0 }));
+        }
+        return ops;
+      });
+      let logo = null; try { logo = new Uint8Array(await (await fetch('sauerbeen-schriftzug.png')).arrayBuffer()); } catch {}
+      await ready;
+      const files = logo ? [{ path: 'logo.png', contents: logo }] : [];
+      const r = await texCall({ typ: 'kompileieren', tex: texLaTeX(pages, !!logo), files });
+      return new Blob([r.pdf], { type: 'application/pdf' });
+    } finally { host.remove(); }
+  }
+
+  // ---------- 2. Picture PDF (fallback) ----------
+  async function buildImagePdf() {
+    await loadPdfLibs();
+    const { host, bounds } = await printHost(true);
+    try {
+      const H = bounds[bounds.length - 1];
+      const shot = await html2canvas(host, { scale: 2, backgroundColor: '#fff', useCORS: true, logging: false, width: PDF_CW, windowWidth: 1280 });
       const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-      const k = shot.width / CW;
+      const k = shot.width / PDF_CW;
       for (let i = 0; i < bounds.length - 1; i++) {
         const y0 = Math.round(bounds[i] * k), h = Math.max(1, Math.min(shot.height, Math.round(bounds[i + 1] * k)) - y0);
         const c = document.createElement('canvas'); c.width = shot.width; c.height = h;
         const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, h); g.drawImage(shot, 0, y0, shot.width, h, 0, 0, shot.width, h);
         if (i) pdf.addPage();
-        pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', M, MV, PAGE_W - 2 * M, (PAGE_W - 2 * M) * h / shot.width, undefined, 'FAST');
+        pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', PDF_M, PDF_MV, PDF_W - 2 * PDF_M, (PDF_W - 2 * PDF_M) * h / shot.width, undefined, 'FAST');
       }
       return pdf.output('blob');
     } finally { host.remove(); }
@@ -881,21 +1017,23 @@
   let pdfBusy = false;
   async function makePdf() {
     if (pdfBusy) return; pdfBusy = true;
-    msgBox('PDF gëtt gemaach …');
+    msgBox('PDF gëtt gemaach … (déi éischte Kéier kënne bis zu 20 MB gelueden ginn)');
     try {
-      const blob = await buildPdf(), name = pdfFileName();
+      let blob;
+      try { blob = await buildLatexPdf(); }
+      catch (e) { console.warn('LaTeX-PDF', e, e && e.log); blob = await buildImagePdf(); }
+      const name = pdfFileName();
       $('pdfMsg')?.remove();
       if (!(await sharePdf(blob, name))) {
         downloadPdf(blob, name);
         msgBox('PDF gouf erofgelueden. Geet näischt? Maach dës Säit am Safari (oder Chrome) op.');
       }
     } catch (e) {
-      console.error("PDFERR " + (e && (e.message || e)) + " " + (e && e.stack));
+      console.error('PDFERR ' + (e && (e.message || e)));
       msgBox('D\'PDF konnt net gemaach ginn (Internet?). Den Drock-Dialog gëtt opgemaach – wann dee näischt mécht, maach d\'Säit am Safari (oder Chrome) op.');
       setTimeout(() => window.print(), 600);
     } finally { pdfBusy = false; }
   }
-  if (jsPdfDefault()) setTimeout(() => loadPdfLibs().catch(() => {}), 1500);   // preload, so the tap is still fresh for the share sheet
   $('btnPdf').onclick = () => {
     countUse('pdf');
     if (window.webkit?.messageHandlers?.sauerbeenPrint) window.webkit.messageHandlers.sauerbeenPrint.postMessage(document.title);
