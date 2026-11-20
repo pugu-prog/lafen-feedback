@@ -829,7 +829,7 @@
     const pageH = Math.floor(CW * (297 - 2 * MV) / (PAGE_W - 2 * M));
     const host = document.createElement('div'); host.id = 'pdfhost';
     host.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + CW + 'px;background:#fff;color:var(--text)';
-    const st = document.createElement('style'); st.textContent = printCss() + '#pdfhost .printonly{display:block}#pdfhost .ptitle{display:flex!important}#pdfhost .commentprint{display:block!important}#pdfhost .tablewrap{overflow:visible}#pdfhost td input{padding:0 6px 4px;line-height:14px}#pdfhost .meta input{padding:0 6px 4px;line-height:14px;height:22px}#pdfhost .unit input{padding-right:38px}';
+    const st = document.createElement('style'); st.textContent = printCss() + '#pdfhost .printonly{display:block}#pdfhost .ptitle{display:flex!important}#pdfhost .commentprint{display:block!important}#pdfhost .tablewrap{overflow:visible}#pdfhost td input{padding:0 6px 4px;line-height:14px}#pdfhost .meta input{padding:0 6px 4px;line-height:14px;height:22px}#pdfhost .unit input{padding-right:54px}';
     const clone = document.querySelector('.sheet').cloneNode(true); clone.classList.add('pdfsheet');
     const src = document.querySelectorAll('.sheet input, .sheet textarea'), dst = clone.querySelectorAll('input, textarea');
     dst.forEach((e, i) => { if (e.tagName === 'TEXTAREA') e.textContent = src[i].value; else e.setAttribute('value', src[i].value); });
