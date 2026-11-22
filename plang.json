@@ -1,0 +1,123 @@
+{
+ "wochen": [
+  {
+   "kw": 48,
+   "jahr": 2026,
+   "tage": [
+    {
+     "label": "Méindeg, 23.11.",
+     "datum": "2026-11-23",
+     "kurz": "60 min easy + strides",
+     "zeilen": [
+      {
+       "t": "60 min easy + strides"
+      }
+     ],
+     "plan": "60min easy + strides"
+    },
+    {
+     "label": "Dënschdeg, 24.11.",
+     "datum": "2026-11-24",
+     "kurz": "",
+     "zeilen": [
+      {
+       "t": "(fräi / näischt agedroen)"
+      }
+     ],
+     "plan": ""
+    },
+    {
+     "label": "Mëttwoch, 25.11.",
+     "datum": "2026-11-25",
+     "kurz": "4km",
+     "zeilen": [
+      {
+       "t": "4km"
+      },
+      {
+       "t": "3x(5-7)x300m (100m traabpaus) (90s)"
+      },
+      {
+       "t": "2km"
+      },
+      {
+       "t": "Mobility"
+      }
+     ],
+     "plan": "4km; 5-7x300m (100m traabpaus); 5-7x300m (100m traabpaus); 5-7x300m (100m traabpaus); 2km"
+    },
+    {
+     "label": "Donneschdeg, 26.11.",
+     "datum": "2026-11-26",
+     "kurz": "",
+     "zeilen": [
+      {
+       "t": "(fräi / näischt agedroen)"
+      }
+     ],
+     "plan": ""
+    },
+    {
+     "label": "Freideg, 27.11.",
+     "datum": "2026-11-27",
+     "kurz": "4km",
+     "zeilen": [
+      {
+       "t": "4km"
+      },
+      {
+       "t": "5x45s hills"
+      },
+      {
+       "t": "90s"
+      },
+      {
+       "t": "8 min threshold"
+      },
+      {
+       "t": "90s"
+      },
+      {
+       "t": "5x30s hills"
+      },
+      {
+       "t": "90s"
+      },
+      {
+       "t": "6 min threshold"
+      },
+      {
+       "t": "2km"
+      },
+      {
+       "t": "Stabi"
+      }
+     ],
+     "plan": "4km; 5x45s hills; 90s; 8min threshold; 90s; 5x30s hills; 90s; 6min threshold; 2km"
+    },
+    {
+     "label": "Samschdeg, 28.11.",
+     "datum": "2026-11-28",
+     "kurz": "",
+     "zeilen": [
+      {
+       "t": "(fräi / näischt agedroen)"
+      }
+     ],
+     "plan": ""
+    },
+    {
+     "label": "Sonndeg, 29.11.",
+     "datum": "2026-11-29",
+     "kurz": "Longrun",
+     "zeilen": [
+      {
+       "t": "Longrun"
+      }
+     ],
+     "plan": ""
+    }
+   ]
+  }
+ ]
+}
