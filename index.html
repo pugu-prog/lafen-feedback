@@ -187,6 +187,12 @@
   #impDays button.on { background: var(--sb-blue); border-color: var(--sb-blue); color: #fff; }
   #impText { min-height: 110px; font: 12px/1.4 ui-monospace, Menlo, monospace; }
   #imp details { margin: 10px 0; }
+  .wp-body { padding-top: 6px; }
+  .wp-days { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .wp-days button { font-size: 13px; padding: 4px 10px; }
+  .wp-days button.on { background: var(--sb-blue); border-color: var(--sb-blue); color: #fff; }
+  .wp-text { white-space: pre-wrap; font: inherit; font-size: 13px; background: rgba(127,127,127,.1); border-radius: 6px; padding: 8px 10px; margin: 8px 0; max-height: 220px; overflow: auto; }
+  #wpNote { margin: 2px 0 6px; color: #1d7a3a; }
   #imp summary { cursor: pointer; font-size: 13px; }
   #impPrevWrap { overflow-x: auto; max-height: 45vh; overflow-y: auto; border: 1px solid #ddd; }
   #impPrev { min-width: 560px; }
@@ -416,11 +422,25 @@
   </div>
   <div id="impStatus" role="status"></div>
   <div id="impDays"></div>
+  <details id="wp" hidden>
+    <summary>Wocheplang vum Trainer</summary>
+    <div class="wp-body">
+      <div class="row"><label for="wpWeek"><b>Woch</b></label><select id="wpWeek"></select><span id="wpDays" class="wp-days"></span></div>
+      <pre id="wpText" class="wp-text"></pre>
+      <div class="row">
+        <button type="button" id="wpCopy">Kopéieren</button>
+        <button type="button" id="wpTake" title="Schreift d'Haaptserien (z.B. 5-7x300m) an d'Feld „Plang als Text“ – du kanns se dono änneren oder läschen">An de Plang iwwerhuelen</button>
+        <span id="wpMsg" class="hint" style="margin:0"></span>
+      </div>
+      <p class="hint" style="margin:6px 0 0">Just e Virschlag: de Plang bleift ännerbar (Rennen, Krankheet, Verletzung) – am Feld „Plang als Text“ änneren oder mam × läschen.</p>
+    </div>
+  </details>
   <div class="row">
     <label for="impPlan" title="Wat geplangt war. D'Reps ginn an de Runde vun der Auer gesicht, d'Runden dertëscht sinn d'Pausen."><b>Plang als Text</b></label>
     <input id="impPlan" autocorrect="off" spellcheck="false" style="flex:1; min-width:200px" placeholder="z.B. 4x1600 (60s) – kënnt aus dem Plang oder selwer aginn">
     <button type="button" id="impPlanClear" title="Plang läschen" aria-label="Plang läschen" style="flex:none; padding:4px 11px">×</button>
   </div>
+  <div id="wpNote" class="hint" hidden></div>
   <details>
     <summary>Schreifweis fir Trainingspläng</summary>
     <div class="hint" style="margin:6px 0 0">
@@ -2010,7 +2030,7 @@
     });
   }
   // × next to the plan field: empty it, the reps then come from the watch laps alone
-  $('impPlanClear').onclick = () => { $('impPlan').value = ''; combine(); $('impPlan').focus(); };
+  $('impPlanClear').onclick = () => { wpOff = true; wpNote(''); $('impPlan').value = ''; combine(); $('impPlan').focus(); };
   function combine() {
     const day = planDate || metaFields(impMeta).date || S.date;
     const plan = parsePlan($('impPlan').value, { friday: !!day && new Date(day + 'T12:00').getDay() === 5 });
@@ -2048,8 +2068,68 @@
     $('zPlan').classList.toggle('has', !!nPlan); $('zLaps').classList.toggle('has', !!lapSlot);
     renderPreview();
   }
+  // ---------- Wocheplang vum Trainer (plang.json, erstallt mam Konverter Werkzeuge/laufplang.py) ----------
+  // Just e Virschlag: ouni plang.json (file://, offline) bleift de Beräich onsiichtbar; de Plang-Feld bleift fräi ännerbar.
+  let wpWeeks = null, wpLoaded = false, wpDay = null, wpAutoFor = '', wpOff = false;
+  const wpEl = $('wp');
+  const dayMs = s => Date.parse(s + 'T12:00:00Z');
+  const wpDate = d => d.datum.split('-').reverse().slice(0, 2).join('.') + '.';
+  const wpLoad = () => wpLoaded || (wpLoaded = wpFetch());
+  async function wpFetch() {
+    try {
+      const r = await fetch('plang.json', { cache: 'no-cache' }); if (!r.ok) return;
+      wpWeeks = (await r.json()).wochen || [];
+    } catch (e) { return; }
+    if (!wpWeeks.length) { wpWeeks = null; return; }
+    $('wpWeek').innerHTML = wpWeeks.map((w, i) => `<option value="${i}">KW ${w.kw}${w.jahr ? ' · ' + w.jahr : ''}</option>`).join('');
+    wpEl.hidden = false;
+    wpPick(null);
+  }
+  // week + day for a date (a watch file) or, without date, today (else the newest week, first day); returns the day or null
+  function wpPick(date) {
+    const day = date || new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+    const i = wpWeeks.findIndex(w => { const a = dayMs(w.tage[0].datum), b = dayMs(w.tage[w.tage.length - 1].datum), t = dayMs(day); return t >= a - 2 * 864e5 && t <= b + 864e5; });
+    if (i < 0 && date) return null;
+    $('wpWeek').value = Math.max(i, 0);
+    const hit = wpWeeks[+$('wpWeek').value].tage.find(d => d.datum === day);
+    wpShow(hit || wpWeeks[+$('wpWeek').value].tage[0]);
+    return hit || null;
+  }
+  function wpShow(d) {
+    wpDay = d;
+    const tage = wpWeeks[+$('wpWeek').value].tage;
+    $('wpDays').innerHTML = tage.map((t, i) => `<button type="button" data-i="${i}"${t === d ? ' class="on"' : ''}>${t.label.replace(/^(\S{3})\S*,\s*/, '$1 ')}</button>`).join('');
+    $('wpText').textContent = d.zeilen.map(z => z.t).join('\n');
+    $('wpMsg').textContent = '';
+  }
+  const wpNote = t => { $('wpNote').textContent = t; $('wpNote').hidden = !t; };
+  $('wpWeek').onchange = () => wpShow(wpWeeks[+$('wpWeek').value].tage[0]);
+  $('wpDays').onclick = e => { const b = e.target.closest('button'); if (b) wpShow(wpWeeks[+$('wpWeek').value].tage[+b.dataset.i]); };
+  $('wpCopy').onclick = async () => {
+    const t = wpDay.label + '\n' + wpDay.zeilen.map(z => z.t).join('\n');
+    try { await navigator.clipboard.writeText(t); $('wpMsg').textContent = 'Kopéiert.'; }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($('wpText')); getSelection().removeAllRanges(); getSelection().addRange(r); $('wpMsg').textContent = 'Markéiert – mat Cmd/Ctrl+C kopéieren.'; }
+  };
+  $('wpTake').onclick = () => {
+    if (!wpDay.plan) { $('wpMsg').textContent = 'Keng Serien an dësem Dag erkannt – Text kopéieren an eleng aschreiwen.'; return; }
+    $('impPlan').value = wpDay.plan; wpNote(`Plang vum Trainer (${wpDate(wpDay)}) – frei ännerbar, × läscht en.`); combine();
+    $('wpMsg').textContent = 'Plang gesat – w.e.gl. nokucken an upassen.';
+  };
+  // after a watch file (date known): week + day are preselected; an EMPTY plan field gets the trainer's plan of that day as a
+  // suggestion (never over something typed or loaded; × or any edit removes/keeps it – the runner decides)
+  const wpAuto = () => {
+    const date = impMeta && metaFields(impMeta).date;
+    if (!wpWeeks || !date || wpAutoFor === date) return;
+    wpAutoFor = date;
+    const hit = wpPick(date);
+    if (!hit) return;
+    wpEl.open = true;
+    if (!wpOff && hit.plan && !$('impPlan').value.trim()) {
+      $('impPlan').value = hit.plan; wpNote(`Plang vum Trainer vum ${wpDate(hit)} als Virschlag gesat – frei ännerbar (Rennen, Krankheet …), × läscht en.`);
+    }
+  };
   let planTimer = 0;
-  $('impPlan').addEventListener('input', () => { clearTimeout(planTimer); planTimer = setTimeout(combine, 500); });
+  $('impPlan').addEventListener('input', () => { wpNote(''); clearTimeout(planTimer); planTimer = setTimeout(combine, 500); });
   // track reps: GPS distance → nearest 100 m when within 5 % (1612 m → 1600 m)
   $('impRound').onchange = e => {
     (lapSlot || []).forEach(en => {
@@ -2073,6 +2153,7 @@
     if (applyEntries(entries, pv && (/ \+ /.test(tr) || pv !== tr) ? planSummary : null)) dlg.close();
   };
   $('btnImport').onclick = () => {
+    wpOff = false; wpAutoFor = ''; wpNote('');
     entries = []; impMeta = null; planDate = ''; lapSlot = null; lapInfo = ''; lapName = ''; planName = ''; status(''); $('impDays').innerHTML = '';
     $('gotPlan').textContent = $('gotLaps').textContent = ''; $('zPlan').classList.remove('has'); $('zLaps').classList.remove('has');
     $('impText').value = '';
@@ -2084,6 +2165,7 @@
     lapRecs = null; $('impLagRow').hidden = true; $('impLag').checked = +S.hrLag > 0; if (+S.hrLag) $('impLagS').value = String(S.hrLag);
     $('impFilePlan').value = $('impFileLaps').value = ''; stravaUi();
     dlg.showModal();
+    wpLoad();
   };
 
   // image → canvas, upscaled, greyscale, dark screenshots inverted (Tesseract wants dark text on light ground)
@@ -2146,6 +2228,7 @@
         lapInfo = (impMeta?.stopped ? ' Pausen, wou d\'Auer gestoppt war oder wou s de stoe bliwwe bass, sinn eegen Zeilen.' : '') + metaText(impMeta);
         if (kind === 'gpx') lapInfo = ' ' + GPX_NOTE;
         const place = await takeMeta(impMeta);
+        await wpLoad(); wpAuto();
         lapInfo += ' Datum, Auerzäit' + (place ? ` a Plaz (${place})` : '') + ' sinn agedroen.';
         $('impRoundRow').hidden = false;
         $('impRound').checked = /piste|track|bahn/i.test(S.surface);
@@ -2274,6 +2357,7 @@
     const a = stravaActs.find(x => String(x.id) === String(id));
     if (a) impMeta = { start: Date.parse(a.start_date) / 1000 - FIT_EPOCH, tzOffset: (Date.parse(a.start_date_local) - Date.parse(a.start_date)) / 1000,
                        lat: a.start_latlng?.[0], lon: a.start_latlng?.[1] };
+    wpAuto();
     $('impRoundRow').hidden = false;
     $('impRound').checked = /piste|track|bahn/i.test(S.surface);
     $('impRound').onchange({ target: $('impRound') });               // also runs combine()
